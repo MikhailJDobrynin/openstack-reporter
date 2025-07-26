@@ -31,28 +31,23 @@ jobs:
         id: changelog
         run: |
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -1 || echo "")
 
-          # Get all tags sorted by version, excluding current tag
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -1)
-
-          echo "## Changelog for ${CURRENT_TAG}" > CHANGELOG.md
-          echo "" >> CHANGELOG.md
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "## Changelog for ${CURRENT_TAG}" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
 
           if [ -n "$PREV_TAG" ]; then
-            echo "### Changes since ${PREV_TAG}" >> CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%an)" --no-merges >> CHANGELOG.md
+            echo "### Changes since ${PREV_TAG}" >> $GITHUB_ENV
+            echo "" >> $GITHUB_ENV
+            git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%an)" --no-merges >> $GITHUB_ENV
           else
-            echo "### Initial release" >> CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            git log --pretty=format:"- %s (%an)" --no-merges >> CHANGELOG.md
+            echo "### Initial release" >> $GITHUB_ENV
+            echo "" >> $GITHUB_ENV
+            git log --pretty=format:"- %s (%an)" --no-merges >> $GITHUB_ENV
           fi
 
-          # Set output for use in release notes
-          delimiter="$(openssl rand -hex 8)"
-          echo "changelog<<${delimiter}" >> $GITHUB_OUTPUT
-          cat CHANGELOG.md >> $GITHUB_OUTPUT
-          echo "${delimiter}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -62,7 +57,7 @@ jobs:
           body: |
             # OpenStack Reporter ${{ github.ref_name }}
 
-            ${{ steps.changelog.outputs.changelog }}
+            ${{ env.CHANGELOG }}
 
             ## Docker Image
 
@@ -73,30 +68,35 @@ jobs:
             ## Quick Start
 
             ```bash
-            # Using Docker
-            docker run -d \
-              --name openstack-reporter \
-              -p 8080:8080 \
-              -e OS_USERNAME=your_username \
-              -e OS_PASSWORD=your_password \
-              -e OS_AUTH_URL=your_auth_url \
-              -e OS_PROJECT_DOMAIN_NAME=your_domain \
-              -e OS_USER_DOMAIN_NAME=your_domain \
+            # Set your OpenStack credentials
+            export OS_PROJECT_DOMAIN_NAME=your-domain
+            export OS_USER_DOMAIN_NAME=your-domain
+            export OS_USERNAME=your-username
+            export OS_PASSWORD=your-password
+            export OS_AUTH_URL=https://your-openstack-endpoint:5000/v3
+            export OS_IDENTITY_API_VERSION=3
+            export OS_AUTH_TYPE=password
+            export OS_INSECURE=true
+
+            # Run the application
+            docker run -p 8080:8080 \
+              -e OS_PROJECT_DOMAIN_NAME \
+              -e OS_USER_DOMAIN_NAME \
+              -e OS_USERNAME \
+              -e OS_PASSWORD \
+              -e OS_AUTH_URL \
+              -e OS_IDENTITY_API_VERSION \
+              -e OS_AUTH_TYPE \
+              -e OS_INSECURE \
               ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ```
 
-            ## Binary Downloads
+            ### Binary files
 
-            Pre-compiled binaries are available for multiple platforms:
+            - **Linux**: `amd64`, `arm64`
+            - **macOS**: `amd64`, `arm64`
 
-            ### Linux
-            - `openstack-reporter-linux-amd64` - Linux x86_64
-            - `openstack-reporter-linux-arm64` - Linux ARM64
-
-            ### macOS
-            - `openstack-reporter-darwin-amd64` - macOS Intel
-            - `openstack-reporter-darwin-arm64` - macOS Apple Silicon
-
+            Скачайте с этой страницы релиза и запустите локально.
           files: |
             bin/openstack-reporter-linux-amd64
             bin/openstack-reporter-linux-arm64
