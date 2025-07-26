@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/app.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-cloud me-2"></i>
+                OpenStack Reporter
+                <small class="text-light ms-2 opacity-75">{{.version}}</small>
+            </a>
+            <div class="navbar-nav ms-auto">
+                <button class="btn btn-outline-light me-2" id="refreshBtn">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Обновить данные
+                </button>
+                <button class="btn btn-outline-light" id="exportPdfBtn">
+                    <i class="fas fa-file-pdf me-1"></i>
+                    Экспорт PDF
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Проекты</h6>
+                                <h3 id="totalProjects">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-folder fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Виртуальные машины</h6>
+                                <h3 id="totalServers">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-server fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Диски</h6>
+                                <h3 id="totalVolumes">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-hdd fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Сетевые ресурсы</h6>
+                                <h3 id="totalNetwork">-</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-network-wired fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="groupBy" class="form-label">Группировка:</label>
+                <select class="form-select" id="groupBy">
+                    <option value="project">По проектам</option>
+                    <option value="type">По типу ресурсов</option>
+                    <option value="status">По статусу</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="sortBy" class="form-label">Сортировка:</label>
+                <select class="form-select" id="sortBy">
+                    <option value="name">По имени (А-Я)</option>
+                    <option value="name_desc">По имени (Я-А)</option>
+                    <option value="created_at">По дате создания (старые)</option>
+                    <option value="created_at_desc">По дате создания (новые)</option>
+                    <option value="status">По статусу (А-Я)</option>
+                    <option value="status_desc">По статусу (Я-А)</option>
+                    <option value="type">По типу (А-Я)</option>
+                    <option value="type_desc">По типу (Я-А)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="filterType" class="form-label">Фильтр по типу:</label>
+                <select class="form-select" id="filterType">
+                    <option value="">Все типы</option>
+                    <option value="server">Виртуальные машины</option>
+                    <option value="volume">Диски</option>
+                    <option value="floating_ip">Floating IP</option>
+                    <option value="router">Роутеры</option>
+                    <option value="load_balancer">Балансировщики</option>
+                    <option value="vpn_service">VPN сервисы</option>
+                    <option value="cluster">Kubernetes кластеры</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Last Update Info -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="alert alert-info" id="lastUpdateInfo" style="display: none;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span id="lastUpdateText"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div class="row" id="loadingSpinner" style="display: none;">
+            <div class="col-12 text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-2">Загрузка данных из OpenStack...</p>
+            </div>
+        </div>
+
+        <!-- Error Alert -->
+        <div class="row" id="errorAlert" style="display: none;">
+            <div class="col-12">
+                <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span id="errorText"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resources Table -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>
+                            Ресурсы OpenStack
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="resourcesTable">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Имя</th>
+                                        <th>Тип</th>
+                                        <th>Проект</th>
+                                        <th>Статус</th>
+                                        <th>Создан</th>
+                                        <th>Детали</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resourcesTableBody">
+                                    <!-- Dynamic content -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <nav aria-label="Resources pagination" id="paginationNav" style="display: none;">
+                            <ul class="pagination justify-content-center" id="pagination">
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resource Details Modal -->
+    <div class="modal fade" id="resourceModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Детали ресурса</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
