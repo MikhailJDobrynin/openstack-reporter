@@ -39,17 +39,11 @@ type Client struct {
 func NewClient() (*Client, error) {
 	projectName := os.Getenv("OS_PROJECT_NAME")
 
-	// If no project specified, try to get the first available project via CLI
+	// If no project specified, use a default project for initialization
+	// The actual multi-project logic will happen in GetAllResources()
 	if projectName == "" {
-		fmt.Printf("DEBUG: No OS_PROJECT_NAME specified, getting first available project\n")
-		projects, err := getProjectsViaCommand()
-		if err == nil && len(projects) > 0 {
-			projectName = projects[0].Name
-			fmt.Printf("DEBUG: Using first available project: %s\n", projectName)
-		} else {
-			projectName = "infra" // fallback to a known project
-			fmt.Printf("DEBUG: CLI failed, using fallback project: %s\n", projectName)
-		}
+		projectName = "infra" // Use a known project for initialization
+		fmt.Printf("DEBUG: No OS_PROJECT_NAME specified, using '%s' for client initialization\n", projectName)
 	}
 
 	opts := gophercloud.AuthOptions{
@@ -162,20 +156,26 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 		return c.collectResourcesForProjects(report, projectNames)
 	}
 
-	// Multi-project mode - get all projects via CLI and iterate
-	fmt.Printf("DEBUG: Multi-project mode - getting all accessible projects via CLI\n")
-	allProjects, err := getProjectsViaCommand()
+	// Multi-project mode - get all projects via API with domain-scoped token
+	fmt.Printf("DEBUG: Multi-project mode - getting all accessible projects via API\n")
+	allProjects, err := c.getProjectsViaAPI()
 	if err != nil {
-		fmt.Printf("DEBUG: CLI project list failed: %v\n", err)
-		// Fallback to current project
-		currentProject, fallbackErr := c.getCurrentProject()
-		if fallbackErr != nil {
-			return nil, fmt.Errorf("failed to get projects: %w", err)
+		fmt.Printf("DEBUG: API project list failed: %v\n", err)
+		// Fallback to CLI method
+		fmt.Printf("DEBUG: Trying CLI fallback...\n")
+		allProjects, err = getProjectsViaCommand()
+		if err != nil {
+			fmt.Printf("DEBUG: CLI project list also failed: %v\n", err)
+			// Final fallback to current project
+			currentProject, fallbackErr := c.getCurrentProject()
+			if fallbackErr != nil {
+				return nil, fmt.Errorf("failed to get projects: %w", err)
+			}
+			report.Projects = []models.Project{currentProject}
+			projectNames := make(map[string]string)
+			projectNames[currentProject.ID] = currentProject.Name
+			return c.collectResourcesForProjects(report, projectNames)
 		}
-		report.Projects = []models.Project{currentProject}
-		projectNames := make(map[string]string)
-		projectNames[currentProject.ID] = currentProject.Name
-		return c.collectResourcesForProjects(report, projectNames)
 	}
 
 	report.Projects = allProjects
@@ -962,7 +962,99 @@ func (c *Client) getVPNPeerID(vpnServiceID string) string {
 	return ""
 }
 
-// getProjectsViaCommand gets project list using OpenStack CLI
+// getProjectsViaAPI gets project list using domain-scoped API token
+func (c *Client) getProjectsViaAPI() ([]models.Project, error) {
+	// Create a domain-scoped client for project listing
+	domainClient, err := c.createDomainScopedClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create domain-scoped client: %w", err)
+	}
+
+	// List all projects in the domain
+	fmt.Printf("DEBUG: Attempting to list projects with domain-scoped token...\n")
+	allPages, err := projects.List(domainClient.identityClient, projects.ListOpts{}).AllPages()
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to list projects via API: %v\n", err)
+		return nil, fmt.Errorf("failed to list projects via API: %w", err)
+	}
+
+	projectList, err := projects.ExtractProjects(allPages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract projects: %w", err)
+	}
+
+	var result []models.Project
+	for _, project := range projectList {
+		result = append(result, models.Project{
+			ID:          project.ID,
+			Name:        project.Name,
+			Description: project.Description,
+			DomainID:    project.DomainID,
+			Enabled:     project.Enabled,
+		})
+	}
+
+	fmt.Printf("DEBUG: Found %d projects via API: ", len(result))
+	for i, project := range result {
+		if i > 0 {
+			fmt.Printf(", ")
+		}
+		fmt.Printf("%s", project.Name)
+	}
+	fmt.Printf("\n")
+
+	return result, nil
+}
+
+// createDomainScopedClient creates a domain-scoped OpenStack client for project listing
+func (c *Client) createDomainScopedClient() (*Client, error) {
+	opts := gophercloud.AuthOptions{
+		IdentityEndpoint: os.Getenv("OS_AUTH_URL"),
+		Username:         os.Getenv("OS_USERNAME"),
+		Password:         os.Getenv("OS_PASSWORD"),
+		DomainName:       os.Getenv("OS_USER_DOMAIN_NAME"),
+		// No TenantName = domain-scoped token
+		Scope: &gophercloud.AuthScope{
+			DomainName: os.Getenv("OS_USER_DOMAIN_NAME"),
+		},
+	}
+
+	var provider *gophercloud.ProviderClient
+	var err error
+
+	if os.Getenv("OS_INSECURE") == "true" {
+		config := &tls.Config{InsecureSkipVerify: true}
+		transport := &http.Transport{TLSClientConfig: config}
+		client := &http.Client{Transport: transport}
+		provider, err = openstack.NewClient(opts.IdentityEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider client: %w", err)
+		}
+		provider.HTTPClient = *client
+		err = openstack.Authenticate(provider, opts)
+	} else {
+		provider, err = openstack.AuthenticatedClient(opts)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create domain-scoped authenticated client: %w", err)
+	}
+
+	identityClient, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create identity client: %w", err)
+	}
+
+	return &Client{
+		provider:       provider,
+		identityClient: identityClient,
+		// Only identity client needed for project listing
+	}, nil
+}
+
+// getProjectsViaCommand gets project list using OpenStack CLI (fallback method)
 func getProjectsViaCommand() ([]models.Project, error) {
 	// Use openstack CLI to get project list (works even without identity:list_projects API permission)
 	cmd := exec.Command("openstack", "project", "list", "-f", "json")
