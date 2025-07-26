@@ -286,11 +286,22 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 	// Get current project info for fallback
 	currentProject, _ := c.getCurrentProject()
 
-	// Try to get servers from all tenants first, fallback to current tenant only
-	listOpts := servers.ListOpts{AllTenants: true}
+	// Check if user wants all projects or specific project
+	var listOpts servers.ListOpts
+	if os.Getenv("OS_PROJECT_NAME") == "" {
+		// No specific project requested - get all accessible projects
+		fmt.Printf("DEBUG: No specific project set, using AllTenants=true\n")
+		listOpts = servers.ListOpts{AllTenants: true}
+	} else {
+		// Specific project requested - get only current project resources
+		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped resources\n", os.Getenv("OS_PROJECT_NAME"))
+		listOpts = servers.ListOpts{}
+	}
+
 	allPages, err := servers.List(c.computeClient, listOpts).AllPages()
-	if err != nil {
+	if err != nil && listOpts.AllTenants {
 		// Fallback to current tenant only if AllTenants fails
+		fmt.Printf("DEBUG: AllTenants failed, falling back to current project only\n")
 		listOpts = servers.ListOpts{}
 		allPages, err = servers.List(c.computeClient, listOpts).AllPages()
 	}
@@ -345,28 +356,27 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 }
 
 func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, error) {
-	var allResources []models.Resource
 	currentProject, _ := c.getCurrentProject()
 
-	// If we have multiple projects, try to get volumes for each project separately
-	if len(projectNames) > 1 {
-		for projectID, projectName := range projectNames {
-			projectVolumes, err := c.getVolumesForProject(projectID, projectName)
-			if err != nil {
-				fmt.Printf("DEBUG: Failed to get volumes for project %s (%s): %v\n", projectName, projectID, err)
-				continue // Skip this project and continue with others
-			}
-			allResources = append(allResources, projectVolumes...)
-		}
-
-		if len(allResources) > 0 {
-			return allResources, nil
-		}
+	// Check if user wants all projects or specific project
+	var listOpts volumes.ListOpts
+	if os.Getenv("OS_PROJECT_NAME") == "" {
+		// No specific project requested - get all accessible projects
+		fmt.Printf("DEBUG: No specific project set, using AllTenants=true for volumes\n")
+		listOpts = volumes.ListOpts{AllTenants: true}
+	} else {
+		// Specific project requested - get only current project resources
+		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped volumes\n", os.Getenv("OS_PROJECT_NAME"))
+		listOpts = volumes.ListOpts{}
 	}
 
-	// Fallback: get volumes without project filtering (current approach)
-	listOpts := volumes.ListOpts{}
 	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
+	if err != nil && listOpts.AllTenants {
+		// Fallback to current tenant only if AllTenants fails
+		fmt.Printf("DEBUG: AllTenants failed for volumes, falling back to current project only\n")
+		listOpts = volumes.ListOpts{}
+		allPages, err = volumes.List(c.blockstorageClient, listOpts).AllPages()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -376,6 +386,7 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 		return nil, err
 	}
 
+	var resources []models.Resource
 	for _, volume := range volumeList {
 		created := volume.CreatedAt
 
@@ -383,14 +394,14 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 		projectID := currentProject.ID
 		projectName := currentProject.Name
 
-				// Get detailed attachment information including server names
+		// Get detailed attachment information including server names
 		attachments := c.getVolumeAttachments(volume.Attachments)
 		attachedTo := ""
 		if len(attachments) > 0 {
 			attachedTo = attachments[0].ServerName
 		}
 
-		allResources = append(allResources, models.Resource{
+		resources = append(resources, models.Resource{
 			ID:          volume.ID,
 			Name:        volume.Name,
 			Type:        "volume",
@@ -412,7 +423,7 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 		})
 	}
 
-	return allResources, nil
+	return resources, nil
 }
 
 func (c *Client) getVolumesForProject(projectID, projectName string) ([]models.Resource, error) {
