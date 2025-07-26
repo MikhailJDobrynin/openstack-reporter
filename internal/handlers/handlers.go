@@ -86,9 +86,11 @@ func (h *Handler) RefreshResources(c *gin.Context) {
 
 // ExportToPDF generates and returns a PDF report
 func (h *Handler) ExportToPDF(c *gin.Context) {
-	// Load current report
-	report, err := h.storage.LoadReport()
-	if err != nil {
+	log.Printf("PDF export requested from %s", c.ClientIP())
+
+	// Check if report exists
+	if !h.storage.ReportExists() {
+		log.Printf("PDF export failed: no report data available")
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "No report data available for export",
 			"details": "Please refresh the data first",
@@ -96,16 +98,33 @@ func (h *Handler) ExportToPDF(c *gin.Context) {
 		return
 	}
 
+	// Load current report
+	report, err := h.storage.LoadReport()
+	if err != nil {
+		log.Printf("PDF export failed: error loading report: %v", err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "No report data available for export",
+			"details": "Please refresh the data first",
+		})
+		return
+	}
+
+	log.Printf("PDF export: loaded report with %d resources", len(report.Resources))
+
 	// Generate PDF
+	log.Printf("PDF export: starting PDF generation")
 	pdfGenerator := pdf.NewGenerator()
 	pdfData, err := pdfGenerator.GenerateReport(report)
 	if err != nil {
+		log.Printf("PDF export failed: error generating PDF: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to generate PDF",
 			"details": err.Error(),
 		})
 		return
 	}
+
+	log.Printf("PDF export: successfully generated PDF (%d bytes)", len(pdfData))
 
 	// Set headers for PDF download
 	filename := "openstack_report_" + time.Now().Format("2006-01-02_15-04-05") + ".pdf"
