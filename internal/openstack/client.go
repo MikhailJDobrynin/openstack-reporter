@@ -25,6 +25,57 @@ import (
 	"openstack-reporter/internal/models"
 )
 
+// ProgressReporter interface for sending progress updates
+type ProgressReporter interface {
+	SendProgress(msgType, message string, currentStep, totalSteps int, project, resourceType string, count int, summary map[string]int)
+}
+
+// ProgressMessage represents a progress update message
+type ProgressMessage struct {
+	Type        string         `json:"type"`
+	Message     string         `json:"message"`
+	CurrentStep int            `json:"current_step,omitempty"`
+	TotalSteps  int            `json:"total_steps,omitempty"`
+	Project     string         `json:"project,omitempty"`
+	ResourceType string        `json:"resource_type,omitempty"`
+	Count       int            `json:"count,omitempty"`
+	Summary     map[string]int `json:"summary,omitempty"`
+}
+
+// ChannelProgressReporter implements ProgressReporter using channels
+type ChannelProgressReporter struct {
+	progressChan chan ProgressMessage
+}
+
+func NewChannelProgressReporter(progressChan chan ProgressMessage) *ChannelProgressReporter {
+	return &ChannelProgressReporter{
+		progressChan: progressChan,
+	}
+}
+
+func (r *ChannelProgressReporter) SendProgress(msgType, message string, currentStep, totalSteps int, project, resourceType string, count int, summary map[string]int) {
+	if r.progressChan == nil {
+		return
+	}
+
+	progressMsg := ProgressMessage{
+		Type:         msgType,
+		Message:      message,
+		CurrentStep:  currentStep,
+		TotalSteps:   totalSteps,
+		Project:      project,
+		ResourceType: resourceType,
+		Count:        count,
+		Summary:      summary,
+	}
+
+	select {
+	case r.progressChan <- progressMsg:
+	default:
+		// Channel full, skip this update
+	}
+}
+
 type Client struct {
 	provider         *gophercloud.ProviderClient
 	computeClient    *gophercloud.ServiceClient
@@ -213,6 +264,87 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 	for resourceType, count := range typeCount {
 		fmt.Printf("   - %s: %d\n", resourceType, count)
 	}
+
+	return report, nil
+}
+
+// GetAllResourcesWithProgress fetches all resources from OpenStack with progress updates
+func (c *Client) GetAllResourcesWithProgress(progressChan chan ProgressMessage) (*models.ResourceReport, error) {
+	reporter := NewChannelProgressReporter(progressChan)
+
+	report := &models.ResourceReport{
+		GeneratedAt: time.Now(),
+		Resources:   []models.Resource{},
+	}
+
+	// Check if user wants all projects or specific project
+	if os.Getenv("OS_PROJECT_NAME") != "" {
+		// Single project mode - use current client
+		reporter.SendProgress("progress", "Single project mode: "+os.Getenv("OS_PROJECT_NAME"), 0, 0, "", "", 0, nil)
+		currentProject, err := c.getCurrentProject()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current project: %w", err)
+		}
+		report.Projects = []models.Project{currentProject}
+
+		// Create project name mapping
+		projectNames := make(map[string]string)
+		projectNames[currentProject.ID] = currentProject.Name
+
+		// Get resources for current project
+		return c.collectResourcesForProjectsWithProgress(report, projectNames, reporter)
+	}
+
+	// Multi-project mode - get all projects via API with domain-scoped token
+	reporter.SendProgress("progress", "Multi-project mode - getting accessible projects", 0, 0, "", "", 0, nil)
+	allProjects, err := c.getProjectsViaAPI()
+	if err != nil {
+		reporter.SendProgress("progress", "API project list failed, trying CLI fallback", 0, 0, "", "", 0, nil)
+		allProjects, err = getProjectsViaCommand()
+		if err != nil {
+			reporter.SendProgress("progress", "CLI project list failed, using fallback", 0, 0, "", "", 0, nil)
+			// Final fallback to current project
+			currentProject, fallbackErr := c.getCurrentProject()
+			if fallbackErr != nil {
+				return nil, fmt.Errorf("failed to get projects: %w", err)
+			}
+			report.Projects = []models.Project{currentProject}
+			projectNames := make(map[string]string)
+			projectNames[currentProject.ID] = currentProject.Name
+			return c.collectResourcesForProjectsWithProgress(report, projectNames, reporter)
+		}
+	}
+
+	report.Projects = allProjects
+	reporter.SendProgress("progress", fmt.Sprintf("Found %d projects, starting resource collection", len(allProjects)), 0, len(allProjects), "", "", 0, nil)
+
+	// Collect resources from each project separately
+	var allResources []models.Resource
+	totalProjects := len(allProjects)
+
+	for i, project := range allProjects {
+		reporter.SendProgress("project_start", fmt.Sprintf("Collecting resources from project: %s", project.Name), i+1, totalProjects, project.Name, "", 0, nil)
+
+		projectResources, err := getResourcesForProjectWithProgress(project, reporter)
+		if err != nil {
+			reporter.SendProgress("project_error", fmt.Sprintf("Failed to get resources for project %s: %v", project.Name, err), i+1, totalProjects, project.Name, "", 0, nil)
+			continue // Skip this project, continue with others
+		}
+
+		reporter.SendProgress("project_complete", fmt.Sprintf("Found %d resources in project %s", len(projectResources), project.Name), i+1, totalProjects, project.Name, "", len(projectResources), nil)
+		allResources = append(allResources, projectResources...)
+	}
+
+	report.Resources = allResources
+	report.Summary = c.calculateSummary(report.Resources, len(report.Projects))
+
+	// Send final summary
+	typeCount := make(map[string]int)
+	for _, resource := range allResources {
+		typeCount[resource.Type]++
+	}
+
+	reporter.SendProgress("summary", fmt.Sprintf("Total %d resources collected from %d projects", len(allResources), len(allProjects)), totalProjects, totalProjects, "", "", len(allResources), typeCount)
 
 	return report, nil
 }
@@ -1187,6 +1319,156 @@ func getResourcesForProject(project models.Project) ([]models.Resource, error) {
 	}
 
 	return resources, nil
+}
+
+// getResourcesForProjectWithProgress creates a new client for specific project and gets its resources with progress
+func getResourcesForProjectWithProgress(project models.Project, reporter ProgressReporter) ([]models.Resource, error) {
+	// Create a new client specifically for this project
+	projectClient, err := createClientForProject(project.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client for project %s: %w", project.Name, err)
+	}
+
+	var resources []models.Resource
+	projectNames := make(map[string]string)
+	projectNames[project.ID] = project.Name
+
+	// Get all resource types for this project with detailed progress reporting
+	reporter.SendProgress("resource_start", "Collecting servers", 0, 0, project.Name, "servers", 0, nil)
+	serverResources, err := projectClient.getServersForSingleProject(projectNames)
+	if err == nil {
+		resources = append(resources, serverResources...)
+		reporter.SendProgress("resource_complete", "Servers collected", 0, 0, project.Name, "servers", len(serverResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect servers: %v", err), 0, 0, project.Name, "servers", 0, nil)
+	}
+
+	reporter.SendProgress("resource_start", "Collecting volumes", 0, 0, project.Name, "volumes", 0, nil)
+	volumeResources, err := projectClient.getVolumesForSingleProject(projectNames)
+	if err == nil {
+		resources = append(resources, volumeResources...)
+		reporter.SendProgress("resource_complete", "Volumes collected", 0, 0, project.Name, "volumes", len(volumeResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect volumes: %v", err), 0, 0, project.Name, "volumes", 0, nil)
+	}
+
+	reporter.SendProgress("resource_start", "Collecting floating IPs", 0, 0, project.Name, "floating_ips", 0, nil)
+	floatingIPResources, err := projectClient.getFloatingIPs(projectNames)
+	if err == nil {
+		resources = append(resources, floatingIPResources...)
+		reporter.SendProgress("resource_complete", "Floating IPs collected", 0, 0, project.Name, "floating_ips", len(floatingIPResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect floating IPs: %v", err), 0, 0, project.Name, "floating_ips", 0, nil)
+	}
+
+	reporter.SendProgress("resource_start", "Collecting routers", 0, 0, project.Name, "routers", 0, nil)
+	routerResources, err := projectClient.getRouters(projectNames)
+	if err == nil {
+		resources = append(resources, routerResources...)
+		reporter.SendProgress("resource_complete", "Routers collected", 0, 0, project.Name, "routers", len(routerResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect routers: %v", err), 0, 0, project.Name, "routers", 0, nil)
+	}
+
+	if projectClient.loadbalancerClient != nil {
+		reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, project.Name, "load_balancers", 0, nil)
+		lbResources, err := projectClient.getLoadBalancers(projectNames)
+		if err == nil {
+			resources = append(resources, lbResources...)
+			reporter.SendProgress("resource_complete", "Load balancers collected", 0, 0, project.Name, "load_balancers", len(lbResources), nil)
+		} else {
+			reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect load balancers: %v", err), 0, 0, project.Name, "load_balancers", 0, nil)
+		}
+	}
+
+	reporter.SendProgress("resource_start", "Collecting VPN connections", 0, 0, project.Name, "vpn_connections", 0, nil)
+	vpnResources, err := projectClient.getVPNConnections(projectNames)
+	if err == nil {
+		resources = append(resources, vpnResources...)
+		reporter.SendProgress("resource_complete", "VPN connections collected", 0, 0, project.Name, "vpn_connections", len(vpnResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect VPN connections: %v", err), 0, 0, project.Name, "vpn_connections", 0, nil)
+	}
+
+	if projectClient.containerClient != nil {
+		reporter.SendProgress("resource_start", "Collecting K8s clusters", 0, 0, project.Name, "k8s_clusters", 0, nil)
+		clusterResources, err := projectClient.getClusters(projectNames)
+		if err == nil {
+			resources = append(resources, clusterResources...)
+			reporter.SendProgress("resource_complete", "K8s clusters collected", 0, 0, project.Name, "k8s_clusters", len(clusterResources), nil)
+		} else {
+			reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect K8s clusters: %v", err), 0, 0, project.Name, "k8s_clusters", 0, nil)
+		}
+	}
+
+	return resources, nil
+}
+
+// collectResourcesForProjectsWithProgress collects resources using current client with progress (single project mode)
+func (c *Client) collectResourcesForProjectsWithProgress(report *models.ResourceReport, projectNames map[string]string, reporter ProgressReporter) (*models.ResourceReport, error) {
+	// Get all resource types with progress updates
+	reporter.SendProgress("resource_start", "Collecting servers", 0, 0, "", "servers", 0, nil)
+	serverResources, err := c.getServers(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get servers: %w", err)
+	}
+	report.Resources = append(report.Resources, serverResources...)
+	reporter.SendProgress("resource_complete", "Servers collected", 0, 0, "", "servers", len(serverResources), nil)
+
+	reporter.SendProgress("resource_start", "Collecting volumes", 0, 0, "", "volumes", 0, nil)
+	volumeResources, err := c.getVolumes(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes: %w", err)
+	}
+	report.Resources = append(report.Resources, volumeResources...)
+	reporter.SendProgress("resource_complete", "Volumes collected", 0, 0, "", "volumes", len(volumeResources), nil)
+
+	reporter.SendProgress("resource_start", "Collecting floating IPs", 0, 0, "", "floating_ips", 0, nil)
+	floatingIPResources, err := c.getFloatingIPs(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get floating IPs: %w", err)
+	}
+	report.Resources = append(report.Resources, floatingIPResources...)
+	reporter.SendProgress("resource_complete", "Floating IPs collected", 0, 0, "", "floating_ips", len(floatingIPResources), nil)
+
+	reporter.SendProgress("resource_start", "Collecting routers", 0, 0, "", "routers", 0, nil)
+	routerResources, err := c.getRouters(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routers: %w", err)
+	}
+	report.Resources = append(report.Resources, routerResources...)
+	reporter.SendProgress("resource_complete", "Routers collected", 0, 0, "", "routers", len(routerResources), nil)
+
+	// Optional services
+	if c.loadbalancerClient != nil {
+		reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, "", "load_balancers", 0, nil)
+		lbResources, err := c.getLoadBalancers(projectNames)
+		if err == nil {
+			report.Resources = append(report.Resources, lbResources...)
+			reporter.SendProgress("resource_complete", "Load balancers collected", 0, 0, "", "load_balancers", len(lbResources), nil)
+		}
+	}
+
+	reporter.SendProgress("resource_start", "Collecting VPN connections", 0, 0, "", "vpn_connections", 0, nil)
+	vpnResources, err := c.getVPNConnections(projectNames)
+	if err == nil {
+		report.Resources = append(report.Resources, vpnResources...)
+		reporter.SendProgress("resource_complete", "VPN connections collected", 0, 0, "", "vpn_connections", len(vpnResources), nil)
+	}
+
+	if c.containerClient != nil {
+		reporter.SendProgress("resource_start", "Collecting K8s clusters", 0, 0, "", "k8s_clusters", 0, nil)
+		clusterResources, err := c.getClusters(projectNames)
+		if err == nil {
+			report.Resources = append(report.Resources, clusterResources...)
+			reporter.SendProgress("resource_complete", "K8s clusters collected", 0, 0, "", "k8s_clusters", len(clusterResources), nil)
+		}
+	}
+
+	// Calculate summary
+	report.Summary = c.calculateSummary(report.Resources, len(report.Projects))
+
+	return report, nil
 }
 
 // createClientForProject creates a new OpenStack client for specific project

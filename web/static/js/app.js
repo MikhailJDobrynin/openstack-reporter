@@ -46,19 +46,274 @@ class OpenStackReporter {
 
 	async refreshData() {
 		try {
-			this.showLoading(true);
-			const response = await fetch('/api/refresh', { method: 'POST' });
+			// Start progress refresh
+			const response = await fetch('/api/refresh/progress', { method: 'POST' });
 
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
-			await this.loadData();
+			const result = await response.json();
+			const sessionId = result.session_id;
+
+			// Show progress modal
+			this.showProgressModal();
+
+			// Start SSE connection for progress updates
+			this.connectToProgress(sessionId);
+
 		} catch (error) {
-			console.error('Error refreshing data:', error);
-			this.showError('Ошибка обновления данных: ' + error.message);
-			this.showLoading(false);
+			console.error('Error starting refresh:', error);
+			this.showError('Ошибка запуска обновления данных: ' + error.message);
 		}
+	}
+
+	showProgressModal() {
+		const modal = new bootstrap.Modal(document.getElementById('progressModal'));
+		modal.show();
+
+		// Reset progress
+		this.updateProgress(0, 'Инициализация...');
+		document.getElementById('projectsList').innerHTML = '';
+		document.getElementById('resourceSummary').style.display = 'none';
+		document.getElementById('progressDoneBtn').style.display = 'none';
+		document.getElementById('progressCancelBtn').style.display = 'block';
+	}
+
+	connectToProgress(sessionId) {
+		const eventSource = new EventSource(`/api/progress?session_id=${sessionId}`);
+
+		eventSource.onmessage = (event) => {
+			try {
+				const data = JSON.parse(event.data);
+				this.handleProgressMessage(data);
+			} catch (error) {
+				console.error('Error parsing progress message:', error);
+			}
+		};
+
+		eventSource.onerror = (error) => {
+			console.error('SSE connection error:', error);
+			eventSource.close();
+		};
+
+		// Store for potential cancellation
+		this.currentEventSource = eventSource;
+
+		// Cancel button handler
+		document.getElementById('progressCancelBtn').onclick = () => {
+			if (this.currentEventSource) {
+				this.currentEventSource.close();
+			}
+			const modal = bootstrap.Modal.getInstance(document.getElementById('progressModal'));
+			modal.hide();
+		};
+	}
+
+	handleProgressMessage(data) {
+		console.log('Progress update:', data);
+
+		switch (data.type) {
+			case 'start':
+				this.updateProgress(5, data.message);
+				break;
+
+			case 'progress':
+				this.updateProgress(10, data.message);
+				break;
+
+			case 'project_start':
+				this.updateProgress(
+					Math.round((data.current_step / data.total_steps) * 80) + 10,
+					`[${data.current_step}/${data.total_steps}] ${data.message}`
+				);
+				this.addProjectToList(data.project, 'progress', 'Сбор данных...');
+				break;
+
+			case 'resource_start':
+				this.updateProjectResource(data.project, data.resource_type, 'progress', `Сбор ${data.resource_type}...`);
+				break;
+
+			case 'resource_complete':
+				this.updateProjectResource(data.project, data.resource_type, 'success', `${data.count} найдено`);
+				break;
+
+			case 'resource_error':
+				this.updateProjectResource(data.project, data.resource_type, 'danger', 'Ошибка');
+				break;
+
+			case 'project_complete':
+				this.updateProjectStatus(data.project, 'success', `${data.count} ресурсов`);
+				break;
+
+			case 'project_error':
+				this.updateProjectStatus(data.project, 'danger', 'Ошибка');
+				break;
+
+			case 'summary':
+				this.updateProgress(95, data.message);
+				this.showResourceSummary(data.summary);
+				break;
+
+			case 'complete':
+				this.updateProgress(100, 'Обновление завершено!');
+				this.showResourceSummary(data.summary);
+				document.getElementById('progressDoneBtn').style.display = 'block';
+				document.getElementById('progressCancelBtn').style.display = 'none';
+
+				// Close SSE connection
+				if (this.currentEventSource) {
+					this.currentEventSource.close();
+				}
+
+				// Reload data
+				setTimeout(() => {
+					this.loadData();
+				}, 1000);
+				break;
+
+			case 'error':
+				this.updateProgress(100, 'Ошибка: ' + data.message);
+				document.getElementById('currentStatus').className = 'alert alert-danger';
+				document.getElementById('progressCancelBtn').style.display = 'none';
+				document.getElementById('progressDoneBtn').style.display = 'block';
+
+				if (this.currentEventSource) {
+					this.currentEventSource.close();
+				}
+				break;
+		}
+	}
+
+	updateProgress(percentage, message) {
+		const progressBar = document.getElementById('mainProgressBar');
+		const progressText = document.getElementById('progressPercentage');
+		const statusText = document.getElementById('statusText');
+
+		progressBar.style.width = `${percentage}%`;
+		progressBar.setAttribute('aria-valuenow', percentage);
+		progressText.textContent = `${percentage}%`;
+		statusText.textContent = message;
+	}
+
+	addProjectToList(projectName, status, message) {
+		if (!projectName) return;
+
+		const projectsList = document.getElementById('projectsList');
+		const existingProject = document.getElementById(`project-${projectName}`);
+
+		if (existingProject) return; // Project already exists
+
+		const statusClass = status === 'success' ? 'list-group-item-success' :
+							status === 'danger' ? 'list-group-item-danger' :
+							status === 'progress' ? 'list-group-item-info' : '';
+
+		const projectItem = document.createElement('div');
+		projectItem.className = `list-group-item ${statusClass}`;
+		projectItem.id = `project-${projectName}`;
+
+		projectItem.innerHTML = `
+			<div class="d-flex justify-content-between align-items-center">
+				<strong>${projectName}</strong>
+				<span class="badge bg-secondary" id="project-status-${projectName}">${message}</span>
+			</div>
+			<div class="mt-2" id="project-resources-${projectName}">
+				<!-- Resource status will be added here -->
+			</div>
+		`;
+
+		projectsList.appendChild(projectItem);
+	}
+
+	updateProjectStatus(projectName, status, message) {
+		if (!projectName) return;
+
+		const projectItem = document.getElementById(`project-${projectName}`);
+		const statusBadge = document.getElementById(`project-status-${projectName}`);
+
+		if (projectItem && statusBadge) {
+			// Update status class
+			projectItem.className = 'list-group-item ' +
+				(status === 'success' ? 'list-group-item-success' :
+				 status === 'danger' ? 'list-group-item-danger' :
+				 'list-group-item-info');
+
+			// Update status badge
+			statusBadge.className = `badge ${status === 'success' ? 'bg-success' : status === 'danger' ? 'bg-danger' : 'bg-secondary'}`;
+			statusBadge.textContent = message;
+		}
+	}
+
+	updateProjectResource(projectName, resourceType, status, message) {
+		if (!projectName || !resourceType) return;
+
+		const resourcesContainer = document.getElementById(`project-resources-${projectName}`);
+		if (!resourcesContainer) return;
+
+		const resourceId = `resource-${projectName}-${resourceType}`;
+		let resourceItem = document.getElementById(resourceId);
+
+		if (!resourceItem) {
+			resourceItem = document.createElement('div');
+			resourceItem.id = resourceId;
+			resourceItem.className = 'small mb-1';
+			resourcesContainer.appendChild(resourceItem);
+		}
+
+		const statusIcon = status === 'success' ? '✅' :
+						   status === 'danger' ? '❌' :
+						   status === 'progress' ? '🔄' : '⏳';
+
+		resourceItem.innerHTML = `${statusIcon} ${this.getResourceTypeLabel(resourceType)}: ${message}`;
+	}
+
+	getResourceTypeLabel(resourceType) {
+		const labels = {
+			'servers': 'Серверы',
+			'volumes': 'Диски',
+			'floating_ips': 'Floating IP',
+			'routers': 'Роутеры',
+			'load_balancers': 'Load Balancers',
+			'vpn_connections': 'VPN',
+			'k8s_clusters': 'K8s кластеры'
+		};
+		return labels[resourceType] || resourceType;
+	}
+
+	showResourceSummary(summary) {
+		if (!summary) return;
+
+		const summaryContainer = document.getElementById('resourceSummary');
+		const cardsContainer = document.getElementById('summaryCards');
+
+		cardsContainer.innerHTML = '';
+
+		const typeIcons = {
+			'server': 'fas fa-server',
+			'volume': 'fas fa-hdd',
+			'floating_ip': 'fas fa-globe',
+			'router': 'fas fa-network-wired',
+			'load_balancer': 'fas fa-balance-scale',
+			'vpn_service': 'fas fa-shield-alt'
+		};
+
+		Object.entries(summary).forEach(([type, count]) => {
+			const col = document.createElement('div');
+			col.className = 'col-md-4 mb-2';
+
+			col.innerHTML = `
+				<div class="card bg-light">
+					<div class="card-body p-2 text-center">
+						<i class="${typeIcons[type] || 'fas fa-cube'} me-2"></i>
+						<strong>${count}</strong> ${this.getResourceTypeLabel(type)}
+					</div>
+				</div>
+			`;
+
+			cardsContainer.appendChild(col);
+		});
+
+		summaryContainer.style.display = 'block';
 	}
 
 	async exportToPDF() {

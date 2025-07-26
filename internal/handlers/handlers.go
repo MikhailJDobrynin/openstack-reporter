@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +17,9 @@ import (
 )
 
 type Handler struct {
-	storage *storage.Storage
+	storage          *storage.Storage
+	progressChannels map[string]chan openstack.ProgressMessage
+	mu               sync.RWMutex
 }
 
 func NewHandler() *Handler {
@@ -24,7 +29,8 @@ func NewHandler() *Handler {
 	}
 
 	return &Handler{
-		storage: storage,
+		storage:          storage,
+		progressChannels: make(map[string]chan openstack.ProgressMessage),
 	}
 }
 
@@ -82,6 +88,108 @@ func (h *Handler) RefreshResources(c *gin.Context) {
 		"generated_at": report.GeneratedAt,
 		"total_resources": len(report.Resources),
 	})
+}
+
+// RefreshWithProgress fetches fresh data from OpenStack with progress updates
+func (h *Handler) RefreshWithProgress(c *gin.Context) {
+	progressChan := make(chan openstack.ProgressMessage, 100)
+	sessionID := fmt.Sprintf("session_%d", time.Now().UnixNano())
+
+	// Store progress channel
+	h.mu.Lock()
+	h.progressChannels[sessionID] = progressChan
+	h.mu.Unlock()
+
+	// Start background refresh
+	go func() {
+		defer func() {
+			// Clean up when goroutine is done
+			h.mu.Lock()
+			delete(h.progressChannels, sessionID)
+			h.mu.Unlock()
+			close(progressChan)
+		}()
+
+		report, err := h.fetchFromOpenStackWithProgress(progressChan)
+		if err != nil {
+			select {
+			case progressChan <- openstack.ProgressMessage{
+				Type:    "error",
+				Message: fmt.Sprintf("Failed to fetch resources: %v", err),
+			}:
+			default:
+			}
+			return
+		}
+
+		// Save the fresh report
+		if err := h.storage.SaveReport(report); err != nil {
+			log.Printf("Warning: Failed to save refreshed report: %v", err)
+		}
+
+		// Clean up old backups
+		if err := h.storage.CleanupBackups(7 * 24 * time.Hour); err != nil {
+			log.Printf("Warning: Failed to cleanup backups: %v", err)
+		}
+
+		select {
+		case progressChan <- openstack.ProgressMessage{
+			Type:    "complete",
+			Message: "Resources refreshed successfully",
+			Summary: calculateTypeSummary(report.Resources),
+		}:
+		default:
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Refresh started",
+		"session_id": sessionID,
+	})
+}
+
+// GetProgress returns SSE stream of progress updates
+func (h *Handler) GetProgress(c *gin.Context) {
+	sessionID := c.Query("session_id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id is required"})
+		return
+	}
+
+	h.mu.RLock()
+	progressChan, exists := h.progressChannels[sessionID]
+	h.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	// Set SSE headers
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+
+	// Send events
+	for {
+		select {
+		case msg, ok := <-progressChan:
+			if !ok {
+				return
+			}
+
+			data, _ := json.Marshal(msg)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			c.Writer.Flush()
+
+			if msg.Type == "complete" || msg.Type == "error" {
+				return
+			}
+		case <-c.Request.Context().Done():
+			return
+		}
+	}
 }
 
 // ExportToPDF generates and returns a PDF report
@@ -161,6 +269,41 @@ func (h *Handler) fetchFromOpenStack() (*models.ResourceReport, error) {
 	}
 
 	return client.GetAllResources()
+}
+
+// fetchFromOpenStackWithProgress connects to OpenStack and fetches all resources with progress updates
+func (h *Handler) fetchFromOpenStackWithProgress(progressChan chan openstack.ProgressMessage) (*models.ResourceReport, error) {
+	select {
+	case progressChan <- openstack.ProgressMessage{
+		Type:    "start",
+		Message: "Initializing OpenStack client...",
+	}:
+	default:
+	}
+
+	client, err := openstack.NewClient()
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case progressChan <- openstack.ProgressMessage{
+		Type:    "progress",
+		Message: "Getting resources with progress updates...",
+	}:
+	default:
+	}
+
+	return client.GetAllResourcesWithProgress(progressChan)
+}
+
+// calculateTypeSummary creates a summary of resources by type
+func calculateTypeSummary(resources []models.Resource) map[string]int {
+	summary := make(map[string]int)
+	for _, resource := range resources {
+		summary[resource.Type]++
+	}
+	return summary
 }
 
 // formatDuration formats duration in human readable format

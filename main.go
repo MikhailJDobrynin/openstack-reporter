@@ -81,6 +81,8 @@ func setupRoutes(r *gin.Engine) {
 	{
 		api.GET("/resources", handler.GetResources)
 		api.POST("/refresh", handler.RefreshResources)
+		api.POST("/refresh/progress", handler.RefreshWithProgress)
+		api.GET("/progress", handler.GetProgress)
 		api.GET("/export/pdf", handler.ExportToPDF)
 		api.GET("/status", handler.GetReportStatus)
 		api.GET("/version", getVersion)
@@ -90,6 +92,8 @@ func setupRoutes(r *gin.Engine) {
 	log.Println("Routes registered:")
 	log.Println("  GET  /api/resources")
 	log.Println("  POST /api/refresh")
+	log.Println("  POST /api/refresh/progress")
+	log.Println("  GET  /api/progress")
 	log.Println("  GET  /api/export/pdf")
 	log.Println("  GET  /api/status")
 	log.Println("  GET  /api/version")
