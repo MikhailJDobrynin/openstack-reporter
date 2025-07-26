@@ -72,7 +72,7 @@ OS_PROJECT_DOMAIN_NAME=vhc-pc
 OS_USER_DOMAIN_NAME=vhc-pc
 OS_USERNAME=your_username
 OS_PASSWORD=your_password
-OS_AUTH_URL=https://eu3-cloud.virtuozzo.com:5000/v3
+OS_AUTH_URL=https://eu3-cloud.domain.cpm:5000/v3
 OS_IDENTITY_API_VERSION=3
 OS_AUTH_TYPE=password
 OS_INSECURE=true
@@ -98,8 +98,8 @@ PORT=8080
 2. **Группировка** - Выберите группировку по проектам, типу или статусу
 3. **Сортировка** - Сортировка по различным полям (с возможностью обратной сортировки)
 4. **Фильтрация** - Фильтр по типу ресурса
-5. **Информативные подписи** - Вместо UUID показываются полезные данные:
-   - ВМ: Flavor и IP адреса (например, "Flavor: va-2-4, IPs: 172.21.31.160")
+5. **Информативные подписи** - показывают полезные данные:
+   - ВМ: Flavor и IP адреса (например, "Flavor: va-2-4, IPs: 172.21.x.x")
    - Диски: Тип, загрузочность, подключение, размер
    - Floating IP: К какому ресурсу подключен
    - Load Balancer: Внутренние и внешние IP адреса
