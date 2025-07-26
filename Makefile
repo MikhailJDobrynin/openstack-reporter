@@ -42,12 +42,27 @@ build-all: build build-linux build-macos ## Build for all platforms
 
 run: ## Run the application
 	@echo "Running $(BINARY_NAME)..."
-	@if [ "$$(uname)" = "Darwin" ]; then \
-		./bin/$(BINARY_NAME)-macos; \
-	elif [ "$$(uname)" = "Linux" ]; then \
-		./bin/$(BINARY_NAME)-linux; \
+	@OS=$$(uname); ARCH=$$(uname -m); \
+	if [ "$$OS" = "Darwin" ]; then \
+		if [ "$$ARCH" = "arm64" ]; then \
+			./bin/$(BINARY_NAME)-darwin-arm64; \
+		elif [ "$$ARCH" = "x86_64" ]; then \
+			./bin/$(BINARY_NAME)-darwin-amd64; \
+		else \
+			echo "Unsupported architecture: $$ARCH on Darwin"; \
+			exit 1; \
+		fi \
+	elif [ "$$OS" = "Linux" ]; then \
+		if [ "$$ARCH" = "aarch64" ] || [ "$$ARCH" = "arm64" ]; then \
+			./bin/$(BINARY_NAME)-linux-arm64; \
+		elif [ "$$ARCH" = "x86_64" ]; then \
+			./bin/$(BINARY_NAME)-linux-amd64; \
+		else \
+			echo "Unsupported architecture: $$ARCH on Linux"; \
+			exit 1; \
+		fi \
 	else \
-		echo "Unsupported OS: $$(uname)"; \
+		echo "Unsupported OS: $$OS"; \
 		exit 1; \
 	fi
 
