@@ -127,16 +127,23 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 		Resources:   []models.Resource{},
 	}
 
-	// Get current project info
-	currentProject, err := c.getCurrentProject()
+	// Try to get all accessible projects first
+	allProjects, err := c.getAllProjects()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current project: %w", err)
+		// Fallback to current project only if we can't get all projects
+		currentProject, fallbackErr := c.getCurrentProject()
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("failed to get projects: %w", err)
+		}
+		report.Projects = []models.Project{currentProject}
+	} else {
+		report.Projects = allProjects
 	}
-	report.Projects = []models.Project{currentProject}
 
 	// Create project name mapping
-	projectNames := map[string]string{
-		currentProject.ID: currentProject.Name,
+	projectNames := make(map[string]string)
+	for _, project := range report.Projects {
+		projectNames[project.ID] = project.Name
 	}
 
 	// Get all resource types
@@ -191,6 +198,48 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 	return report, nil
 }
 
+func (c *Client) getAllProjects() ([]models.Project, error) {
+	// Try to list all projects the user has access to
+	fmt.Printf("DEBUG: Attempting to list all accessible projects...\n")
+	allPages, err := projects.List(c.identityClient, projects.ListOpts{}).AllPages()
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to list projects: %v\n", err)
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	projectList, err := projects.ExtractProjects(allPages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract projects: %w", err)
+	}
+
+	var result []models.Project
+	for _, project := range projectList {
+		result = append(result, models.Project{
+			ID:          project.ID,
+			Name:        project.Name,
+			Description: project.Description,
+			DomainID:    project.DomainID,
+			Enabled:     project.Enabled,
+		})
+	}
+
+	if len(result) == 0 {
+		fmt.Printf("DEBUG: No projects found for user\n")
+		return nil, fmt.Errorf("no projects accessible to user")
+	}
+
+	fmt.Printf("DEBUG: Found %d accessible projects: ", len(result))
+	for i, project := range result {
+		if i > 0 {
+			fmt.Printf(", ")
+		}
+		fmt.Printf("%s (%s)", project.Name, project.ID)
+	}
+	fmt.Printf("\n")
+
+	return result, nil
+}
+
 func (c *Client) getCurrentProject() (models.Project, error) {
 	// Get current token to extract project info
 	authResult := c.provider.GetAuthResult()
@@ -236,7 +285,15 @@ func (c *Client) getCurrentProject() (models.Project, error) {
 func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, error) {
 	// Get current project info for fallback
 	currentProject, _ := c.getCurrentProject()
-	allPages, err := servers.List(c.computeClient, servers.ListOpts{}).AllPages()
+
+	// Try to get servers from all tenants first, fallback to current tenant only
+	listOpts := servers.ListOpts{AllTenants: true}
+	allPages, err := servers.List(c.computeClient, listOpts).AllPages()
+	if err != nil {
+		// Fallback to current tenant only if AllTenants fails
+		listOpts = servers.ListOpts{}
+		allPages, err = servers.List(c.computeClient, listOpts).AllPages()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +347,15 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, error) {
 	// Get current project info for fallback
 	currentProject, _ := c.getCurrentProject()
-	allPages, err := volumes.List(c.blockstorageClient, volumes.ListOpts{}).AllPages()
+
+	// Try to get volumes from all tenants first, fallback to current tenant only
+	listOpts := volumes.ListOpts{AllTenants: true}
+	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
+	if err != nil {
+		// Fallback to current tenant only if AllTenants fails
+		listOpts = volumes.ListOpts{}
+		allPages, err = volumes.List(c.blockstorageClient, listOpts).AllPages()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -304,9 +369,16 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 	for _, volume := range volumeList {
 		created := volume.CreatedAt
 
-		// Try to get project ID from volume metadata or use current project
-		projectID := currentProject.ID
-		projectName := currentProject.Name
+		// Get project ID from volume or use current project as fallback
+		projectID := volume.ProjectID
+		if projectID == "" {
+			projectID = currentProject.ID
+		}
+
+		projectName := projectNames[projectID]
+		if projectName == "" {
+			projectName = currentProject.Name
+		}
 
 				// Get detailed attachment information including server names
 		attachments := c.getVolumeAttachments(volume.Attachments)
