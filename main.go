@@ -110,8 +110,7 @@ func getAPIDocs(c *gin.Context) {
 						"load_balancers":  map[string]string{"type": "array", "description": "List of load balancers"},
 						"floating_ips":    map[string]string{"type": "array", "description": "List of floating IP addresses"},
 						"routers":         map[string]string{"type": "array", "description": "List of network routers"},
-						"vpn_services":    map[string]string{"type": "array", "description": "List of VPN services"},
-						"clusters":        map[string]string{"type": "array", "description": "List of Kubernetes clusters"},
+						"vpn_services":    map[string]string{"type": "array", "description": "List of VPN IPSec site connections"},
 						"summary":         map[string]string{"type": "object", "description": "Resource counts summary"},
 						"generated_at":    map[string]string{"type": "string", "description": "Report generation timestamp"},
 					},
@@ -201,13 +200,12 @@ func getAPIDocs(c *gin.Context) {
 		},
 		"supported_resources": []map[string]string{
 			{"name": "Projects", "description": "OpenStack projects/tenants"},
-			{"name": "Servers", "description": "Virtual machines (Nova)"},
-			{"name": "Volumes", "description": "Block storage volumes (Cinder)"},
-			{"name": "Load Balancers", "description": "Load balancing services (Octavia)"},
-			{"name": "Floating IPs", "description": "Public IP addresses (Neutron)"},
+			{"name": "Servers", "description": "Virtual machines with Flavor and network info (Nova)"},
+			{"name": "Volumes", "description": "Block storage volumes with attachment details (Cinder)"},
+			{"name": "Load Balancers", "description": "Load balancing services with IP addresses (Octavia)"},
+			{"name": "Floating IPs", "description": "Public IP addresses with attachment info (Neutron)"},
 			{"name": "Routers", "description": "Network routers (Neutron)"},
-			{"name": "VPN Services", "description": "VPN gateway services (Neutron)"},
-			{"name": "Clusters", "description": "Kubernetes clusters (Magnum)"},
+			{"name": "VPN Connections", "description": "IPSec site-to-site connections with peer info (Neutron VPNaaS)"},
 		},
 	}
 
