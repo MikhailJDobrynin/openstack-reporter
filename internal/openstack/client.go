@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gophercloud/gophercloud"
@@ -190,9 +191,10 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 	}
 
 	// Check if user wants all projects or specific project
-	if os.Getenv("OS_PROJECT_NAME") != "" {
+	projectName := strings.TrimSpace(os.Getenv("OS_PROJECT_NAME"))
+	if projectName != "" {
 		// Single project mode - use current client
-		fmt.Printf("DEBUG: Single project mode: %s\n", os.Getenv("OS_PROJECT_NAME"))
+		fmt.Printf("DEBUG: Single project mode: %s\n", projectName)
 		currentProject, err := c.getCurrentProject()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current project: %w", err)
@@ -278,9 +280,10 @@ func (c *Client) GetAllResourcesWithProgress(progressChan chan ProgressMessage) 
 	}
 
 	// Check if user wants all projects or specific project
-	if os.Getenv("OS_PROJECT_NAME") != "" {
+	projectName := strings.TrimSpace(os.Getenv("OS_PROJECT_NAME"))
+	if projectName != "" {
 		// Single project mode - use current client
-		reporter.SendProgress("progress", "Single project mode: "+os.Getenv("OS_PROJECT_NAME"), 0, 0, "", "", 0, nil)
+		reporter.SendProgress("progress", "Single project mode: "+projectName, 0, 0, "", "", 0, nil)
 		currentProject, err := c.getCurrentProject()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current project: %w", err)
@@ -439,13 +442,14 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 
 	// Check if user wants all projects or specific project
 	var listOpts servers.ListOpts
-	if os.Getenv("OS_PROJECT_NAME") == "" {
+	projectName := strings.TrimSpace(os.Getenv("OS_PROJECT_NAME"))
+	if projectName == "" {
 		// No specific project requested - get all accessible projects
 		fmt.Printf("DEBUG: No specific project set, using AllTenants=true\n")
 		listOpts = servers.ListOpts{AllTenants: true}
 	} else {
 		// Specific project requested - get only current project resources
-		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped resources\n", os.Getenv("OS_PROJECT_NAME"))
+		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped resources\n", projectName)
 		listOpts = servers.ListOpts{}
 	}
 
@@ -511,13 +515,14 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 
 	// Check if user wants all projects or specific project
 	var listOpts volumes.ListOpts
-	if os.Getenv("OS_PROJECT_NAME") == "" {
+	projectName := strings.TrimSpace(os.Getenv("OS_PROJECT_NAME"))
+	if projectName == "" {
 		// No specific project requested - get all accessible projects
 		fmt.Printf("DEBUG: No specific project set, using AllTenants=true for volumes\n")
 		listOpts = volumes.ListOpts{AllTenants: true}
 	} else {
 		// Specific project requested - get only current project resources
-		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped volumes\n", os.Getenv("OS_PROJECT_NAME"))
+		fmt.Printf("DEBUG: Project '%s' specified, getting project-scoped volumes\n", projectName)
 		listOpts = volumes.ListOpts{}
 	}
 
