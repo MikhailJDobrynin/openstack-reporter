@@ -11,11 +11,14 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/identity/v3/projects"
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/services"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/siteconnections"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 
 	"openstack-reporter/internal/models"
 )
@@ -169,7 +172,8 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 		}
 	}
 
-	vpnResources, err := c.getVPNServices(projectNames)
+	// Get VPN IPSec Site Connections (actual VPN tunnels with peer info)
+	vpnResources, err := c.getVPNConnections(projectNames)
 	if err == nil {
 		report.Resources = append(report.Resources, vpnResources...)
 	}
@@ -255,6 +259,9 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 			projectID = currentProject.ID
 		}
 
+				// Get detailed flavor information
+		flavorName, flavorID := c.getFlavorDetails(server.Flavor)
+
 		resources = append(resources, models.Resource{
 			ID:          server.ID,
 			Name:        server.Name,
@@ -268,8 +275,8 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 				ID:         server.ID,
 				Name:       server.Name,
 				Status:     server.Status,
-				FlavorName: getFlavorName(server.Flavor),
-				ImageName:  getImageName(server.Image),
+				FlavorName: flavorName,
+				FlavorID:   flavorID,
 				Networks:   extractNetworks(server.Addresses),
 				CreatedAt:  created,
 				UpdatedAt:  updated,
@@ -301,6 +308,13 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 		projectID := currentProject.ID
 		projectName := currentProject.Name
 
+				// Get detailed attachment information including server names
+		attachments := c.getVolumeAttachments(volume.Attachments)
+		attachedTo := ""
+		if len(attachments) > 0 {
+			attachedTo = attachments[0].ServerName
+		}
+
 		resources = append(resources, models.Resource{
 			ID:          volume.ID,
 			Name:        volume.Name,
@@ -316,7 +330,8 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 				Size:        volume.Size,
 				VolumeType:  volume.VolumeType,
 				Bootable:    volume.Bootable == "true",
-				Attachments: extractAttachments(volume.Attachments),
+				Attachments: attachments,
+				AttachedTo:  attachedTo,
 				CreatedAt:   created,
 			},
 		})
@@ -351,6 +366,9 @@ func (c *Client) getFloatingIPs(projectNames map[string]string) ([]models.Resour
 			projectID = currentProject.ID
 		}
 
+		// Get attached resource name if floating IP is attached
+		attachedResourceName := c.getAttachedResourceName(fip.PortID)
+
 		resources = append(resources, models.Resource{
 			ID:          fip.ID,
 			Name:        fip.FloatingIP,
@@ -361,14 +379,15 @@ func (c *Client) getFloatingIPs(projectNames map[string]string) ([]models.Resour
 			CreatedAt:   created,
 			UpdatedAt:   updated,
 			Properties: models.FloatingIP{
-				ID:                fip.ID,
-				FloatingIP:        fip.FloatingIP,
-				Status:            fip.Status,
-				FixedIP:           fip.FixedIP,
-				PortID:            fip.PortID,
-				FloatingNetworkID: fip.FloatingNetworkID,
-				CreatedAt:         created,
-				UpdatedAt:         updated,
+				ID:                   fip.ID,
+				FloatingIP:           fip.FloatingIP,
+				Status:               fip.Status,
+				FixedIP:              fip.FixedIP,
+				PortID:               fip.PortID,
+				AttachedResourceName: attachedResourceName,
+				FloatingNetworkID:    fip.FloatingNetworkID,
+				CreatedAt:            created,
+				UpdatedAt:            updated,
 			},
 		})
 	}
@@ -509,6 +528,9 @@ func (c *Client) getVPNServices(projectNames map[string]string) ([]models.Resour
 			projectID = currentProject.ID
 		}
 
+		// Get VPN peer ID if available
+		peerID := c.getVPNPeerID(vpn.ID)
+
 		resources = append(resources, models.Resource{
 			ID:          vpn.ID,
 			Name:        vpn.Name,
@@ -524,7 +546,69 @@ func (c *Client) getVPNServices(projectNames map[string]string) ([]models.Resour
 				Status:      vpn.Status,
 				RouterID:    vpn.RouterID,
 				SubnetID:    vpn.SubnetID,
+				PeerID:      peerID,
 				CreatedAt:   created,
+			},
+		})
+	}
+
+	return resources, nil
+}
+
+func (c *Client) getVPNConnections(projectNames map[string]string) ([]models.Resource, error) {
+	// Get current project info for fallback
+	currentProject, _ := c.getCurrentProject()
+
+		// Get VPN IPSec site connections
+	allPages, err := siteconnections.List(c.networkClient, siteconnections.ListOpts{}).AllPages()
+	if err != nil {
+		return []models.Resource{}, fmt.Errorf("failed to list VPN site connections: %w", err)
+	}
+
+	connectionList, err := siteconnections.ExtractConnections(allPages)
+	if err != nil {
+		return []models.Resource{}, fmt.Errorf("failed to extract VPN site connections: %w", err)
+	}
+
+	var resources []models.Resource
+	for _, conn := range connectionList {
+		created := time.Now() // VPN Connection API may not provide created time
+
+		// Get project name, fallback to current project if not found
+		projectName := projectNames[conn.TenantID]
+		projectID := conn.TenantID
+		if projectName == "" {
+			projectName = currentProject.Name
+			projectID = currentProject.ID
+		}
+
+		// Use connection name as VPN name
+		name := conn.Name
+		if name == "" {
+			name = fmt.Sprintf("vpn-connection-%s", conn.ID[:8])
+		}
+
+		resources = append(resources, models.Resource{
+			ID:          conn.ID,
+			Name:        name,
+			Type:        "vpn_service",
+			ProjectID:   projectID,
+			ProjectName: projectName,
+			Status:      conn.Status,
+			CreatedAt:   created,
+			Properties: models.VPNService{
+				ID:              conn.ID,
+				Name:            name,
+				Description:     conn.Description,
+				Status:          conn.Status,
+				RouterID:        conn.VPNServiceID, // Link to parent VPN service
+				SubnetID:        "",                // Not available in site connection
+				PeerID:          conn.PeerID,
+				PeerAddress:     conn.PeerAddress,
+				AuthMode:        conn.AuthMode,
+				IKEVersion:      "",               // Available in IKE policy, not connection
+				MTU:             conn.MTU,
+				CreatedAt:       created,
 			},
 		})
 	}
@@ -570,39 +654,6 @@ func (c *Client) calculateSummary(resources []models.Resource, totalProjects int
 }
 
 // Helper functions
-func getImageName(image interface{}) string {
-	if image == nil {
-		return "Unknown"
-	}
-	if imageMap, ok := image.(map[string]interface{}); ok {
-		if name, exists := imageMap["name"]; exists {
-			if nameStr, ok := name.(string); ok {
-				return nameStr
-			}
-		}
-	}
-	return "Unknown"
-}
-
-func getFlavorName(flavor interface{}) string {
-	if flavor == nil {
-		return "Unknown"
-	}
-	if flavorMap, ok := flavor.(map[string]interface{}); ok {
-		if name, exists := flavorMap["original_name"]; exists {
-			if nameStr, ok := name.(string); ok {
-				return nameStr
-			}
-		}
-		if name, exists := flavorMap["name"]; exists {
-			if nameStr, ok := name.(string); ok {
-				return nameStr
-			}
-		}
-	}
-	return "Unknown"
-}
-
 func extractNetworks(addresses interface{}) map[string]string {
 	networks := make(map[string]string)
 	if addressMap, ok := addresses.(map[string]interface{}); ok {
@@ -617,20 +668,6 @@ func extractNetworks(addresses interface{}) map[string]string {
 		}
 	}
 	return networks
-}
-
-func extractAttachments(attachments interface{}) []string {
-	var result []string
-	if attachList, ok := attachments.([]interface{}); ok {
-		for _, attach := range attachList {
-			if attachInfo, ok := attach.(map[string]interface{}); ok {
-				if serverID, exists := attachInfo["server_id"]; exists {
-					result = append(result, serverID.(string))
-				}
-			}
-		}
-	}
-	return result
 }
 
 func convertGatewayInfo(gatewayInfo routers.GatewayInfo) map[string]interface{} {
@@ -653,4 +690,129 @@ func convertRoutes(routes []routers.Route) []interface{} {
 		result[i] = routeMap
 	}
 	return result
+}
+
+// getFlavorDetails gets detailed flavor information
+func (c *Client) getFlavorDetails(flavorRef interface{}) (string, string) {
+	if flavorRef == nil {
+		return "Unknown", ""
+	}
+
+	// Try to get flavor ID first
+	var flavorID string
+	if flavorMap, ok := flavorRef.(map[string]interface{}); ok {
+		if id, exists := flavorMap["id"]; exists {
+			flavorID = id.(string)
+		}
+	}
+
+	if flavorID == "" {
+		return "Unknown", ""
+	}
+
+	// Get flavor details from API
+	flavor, err := flavors.Get(c.computeClient, flavorID).Extract()
+	if err != nil {
+		return "Unknown", flavorID
+	}
+
+	return flavor.Name, flavorID
+}
+
+
+
+// getVolumeAttachments gets detailed attachment information including server names
+func (c *Client) getVolumeAttachments(attachments interface{}) []models.VolumeAttachment {
+	var result []models.VolumeAttachment
+
+	if attachments == nil {
+		return result
+	}
+
+	// Handle both []interface{} and []volumes.Attachment types
+	if attachSlice, ok := attachments.([]volumes.Attachment); ok {
+		// Direct volumes.Attachment slice
+		for _, attach := range attachSlice {
+			attachment := models.VolumeAttachment{
+				ServerID: attach.ServerID,
+				Device:   attach.Device,
+			}
+
+			// Get server name
+			if attach.ServerID != "" {
+				attachment.ServerName = c.getServerName(attach.ServerID)
+			}
+
+			result = append(result, attachment)
+		}
+	} else if attachList, ok := attachments.([]interface{}); ok {
+		// Interface slice (fallback)
+		for _, attach := range attachList {
+			if attachInfo, ok := attach.(map[string]interface{}); ok {
+				attachment := models.VolumeAttachment{}
+
+				if serverID, exists := attachInfo["server_id"]; exists {
+					attachment.ServerID = serverID.(string)
+					attachment.ServerName = c.getServerName(attachment.ServerID)
+				}
+
+				if device, exists := attachInfo["device"]; exists {
+					attachment.Device = device.(string)
+				}
+
+				result = append(result, attachment)
+			}
+		}
+	}
+
+	return result
+}
+
+// getServerName gets server name by ID
+func (c *Client) getServerName(serverID string) string {
+	if serverID == "" {
+		return ""
+	}
+
+	server, err := servers.Get(c.computeClient, serverID).Extract()
+	if err != nil {
+		return serverID // Return ID if can't get name
+	}
+
+	return server.Name
+}
+
+// getAttachedResourceName gets the name of resource attached to a port
+func (c *Client) getAttachedResourceName(portID string) string {
+	if portID == "" {
+		return ""
+	}
+
+	port, err := ports.Get(c.networkClient, portID).Extract()
+	if err != nil {
+		return ""
+	}
+
+	// If port has device_id, try to get the device name
+	if port.DeviceID != "" {
+		// Try to get server name first
+		if port.DeviceOwner == "compute:nova" {
+			serverName := c.getServerName(port.DeviceID)
+			if serverName != "" {
+				return serverName
+			}
+		}
+		// For other device types, return device ID
+		return port.DeviceID
+	}
+
+	return ""
+}
+
+// getVPNPeerID gets VPN peer ID from IPSec connections
+func (c *Client) getVPNPeerID(vpnServiceID string) string {
+	// This is a simplified approach - in real implementation you might want to
+	// look at IPSec connections or other VPN-related resources
+	// For now, return empty as this requires more complex VPN API calls
+	return ""
 }

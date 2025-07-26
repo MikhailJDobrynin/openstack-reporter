@@ -35,13 +35,10 @@ func (g *Generator) GenerateReport(report *models.ResourceReport) ([]byte, error
 	// Add projects section
 	g.addProjectsSection(pdf, report.Projects)
 
-	// Add resources by type
-	g.addResourcesByType(pdf, report.Resources)
+	// Add detailed resources by project and type
+	g.addDetailedResourcesByProject(pdf, report.Resources)
 
-	// Add detailed resources table
-	g.addResourcesTable(pdf, report.Resources)
-
-		// Generate PDF bytes
+	// Generate PDF bytes
 	var buf bytes.Buffer
 	err := pdf.Output(&buf)
 	if err != nil {
@@ -152,60 +149,15 @@ func (g *Generator) addProjectsSection(pdf *gofpdf.Fpdf, projects []models.Proje
 	pdf.Ln(10)
 }
 
-func (g *Generator) addResourcesByType(pdf *gofpdf.Fpdf, resources []models.Resource) {
-	// Group resources by type
-	typeGroups := make(map[string][]models.Resource)
-	for _, resource := range resources {
-		typeGroups[resource.Type] = append(typeGroups[resource.Type], resource)
-	}
-
-	// Section title
-	pdf.SetFont("Arial", "B", 14)
-	pdf.SetTextColor(0, 0, 0)
-	pdf.Cell(0, 10, "Resources by Type")
-	pdf.Ln(12)
-
-	// Sort types for consistent output
-	var types []string
-	for resourceType := range typeGroups {
-		types = append(types, resourceType)
-	}
-	sort.Strings(types)
-
-	for _, resourceType := range types {
-		resources := typeGroups[resourceType]
-
-		// Type subsection
-		pdf.SetFont("Arial", "B", 12)
-		pdf.Cell(0, 8, fmt.Sprintf("%s (%d)", g.getTypeDisplayName(resourceType), len(resources)))
-		pdf.Ln(10)
-
-		// Group by project within type
-		projectGroups := make(map[string]int)
-		for _, resource := range resources {
-			projectGroups[resource.ProjectName]++
-		}
-
-		pdf.SetFont("Arial", "", 10)
-		for projectName, count := range projectGroups {
-			pdf.CellFormat(10, 6, "", "", 0, "L", false, 0, "") // Indent
-			pdf.CellFormat(0, 6, fmt.Sprintf("%s: %d", projectName, count), "", 1, "L", false, 0, "")
-		}
-		pdf.Ln(5)
-	}
-
-	pdf.Ln(5)
-}
-
-func (g *Generator) addResourcesTable(pdf *gofpdf.Fpdf, resources []models.Resource) {
-	// Add new page for detailed table
+func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []models.Resource) {
+	// Add new page for detailed resources
 	pdf.AddPage()
 
 	// Section title
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetTextColor(0, 0, 0)
 	pdf.Cell(0, 10, "Detailed Resources")
-	pdf.Ln(12)
+	pdf.Ln(15)
 
 	if len(resources) == 0 {
 		pdf.SetFont("Arial", "I", 10)
@@ -213,45 +165,81 @@ func (g *Generator) addResourcesTable(pdf *gofpdf.Fpdf, resources []models.Resou
 		return
 	}
 
-	// Table header
-	pdf.SetFont("Arial", "B", 8)
-	pdf.SetFillColor(200, 200, 200)
-	pdf.CellFormat(40, 6, "Name", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(25, 6, "Type", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(35, 6, "Project", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(20, 6, "Status", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(25, 6, "Created", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(45, 6, "ID", "1", 1, "L", true, 0, "")
-
-	// Sort resources by project, then by type, then by name
-	sort.Slice(resources, func(i, j int) bool {
-		if resources[i].ProjectName != resources[j].ProjectName {
-			return resources[i].ProjectName < resources[j].ProjectName
-		}
-		if resources[i].Type != resources[j].Type {
-			return resources[i].Type < resources[j].Type
-		}
-		return resources[i].Name < resources[j].Name
-	})
-
-	// Table data
-	pdf.SetFont("Arial", "", 7)
-	pdf.SetFillColor(255, 255, 255)
-
+	// Group resources by project
+	projectGroups := make(map[string][]models.Resource)
 	for _, resource := range resources {
-		name := resource.Name
-		if name == "" {
-			name = "unnamed"
+		projectGroups[resource.ProjectName] = append(projectGroups[resource.ProjectName], resource)
+	}
+
+	// Sort projects alphabetically
+	var projects []string
+	for projectName := range projectGroups {
+		projects = append(projects, projectName)
+	}
+	sort.Strings(projects)
+
+	for _, projectName := range projects {
+		resources := projectGroups[projectName]
+
+		// Project subsection
+		pdf.SetFont("Arial", "B", 12)
+		pdf.Cell(0, 8, fmt.Sprintf("Project: %s (%d resources)", projectName, len(resources)))
+		pdf.Ln(10)
+
+		// Group resources by type within project
+		typeGroups := make(map[string][]models.Resource)
+		for _, resource := range resources {
+			typeGroups[resource.Type] = append(typeGroups[resource.Type], resource)
 		}
 
-		createdDate := resource.CreatedAt.Format("2006-01-02")
+		// Sort types for consistent output
+		var types []string
+		for resourceType := range typeGroups {
+			types = append(types, resourceType)
+		}
+		sort.Strings(types)
 
-		pdf.CellFormat(40, 5, g.truncateString(name, 20), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(25, 5, g.truncateString(g.getTypeDisplayName(resource.Type), 12), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(35, 5, g.truncateString(resource.ProjectName, 18), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(20, 5, g.truncateString(resource.Status, 10), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(25, 5, createdDate, "1", 0, "C", false, 0, "")
-		pdf.CellFormat(45, 5, g.truncateString(resource.ID, 25), "1", 1, "L", false, 0, "")
+		for _, resourceType := range types {
+			resources := typeGroups[resourceType]
+
+			// Type subsection
+			pdf.SetFont("Arial", "B", 10)
+			pdf.Cell(0, 8, fmt.Sprintf("%s (%d)", g.getTypeDisplayName(resourceType), len(resources)))
+			pdf.Ln(10)
+
+			// Sort resources by creation date
+			sort.Slice(resources, func(i, j int) bool {
+				return resources[i].CreatedAt.Before(resources[j].CreatedAt)
+			})
+
+			// Table header
+			pdf.SetFont("Arial", "B", 9)
+			pdf.SetFillColor(200, 200, 200)
+			pdf.CellFormat(60, 7, "Name", "1", 0, "L", true, 0, "")
+			pdf.CellFormat(40, 7, "Type", "1", 0, "L", true, 0, "")
+			pdf.CellFormat(30, 7, "Status", "1", 0, "C", true, 0, "")
+			pdf.CellFormat(35, 7, "Created", "1", 1, "C", true, 0, "")
+
+			// Table data
+			pdf.SetFont("Arial", "", 8)
+			pdf.SetFillColor(255, 255, 255)
+
+			for _, resource := range resources {
+				name := resource.Name
+				if name == "" {
+					name = "unnamed"
+				}
+
+				createdDate := resource.CreatedAt.Format("2006-01-02")
+
+				pdf.CellFormat(60, 6, g.truncateString(name, 30), "1", 0, "L", false, 0, "")
+				pdf.CellFormat(40, 6, g.truncateString(g.getTypeDisplayName(resource.Type), 18), "1", 0, "L", false, 0, "")
+				pdf.CellFormat(30, 6, g.truncateString(resource.Status, 12), "1", 0, "C", false, 0, "")
+				pdf.CellFormat(35, 6, createdDate, "1", 1, "C", false, 0, "")
+			}
+			pdf.Ln(5)
+		}
+		pdf.Ln(5)
 	}
 }
 

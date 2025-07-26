@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation - OpenStack Reporter</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/app.css" rel="stylesheet">
+    <style>
+        .endpoint-card {
+            border-left: 4px solid #0d6efd;
+            margin-bottom: 1.5rem;
+        }
+        .method-badge {
+            font-weight: 600;
+            font-size: 0.75rem;
+            padding: 0.375rem 0.75rem;
+        }
+        .method-get { background-color: #198754; }
+        .method-post { background-color: #fd7e14; }
+        .method-put { background-color: #0dcaf0; }
+        .method-delete { background-color: #dc3545; }
+        .json-viewer {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+        }
+        .nav-pills .nav-link.active {
+            background-color: #0d6efd;
+        }
+        .sticky-top {
+            top: 20px;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-cloud me-2"></i>
+                OpenStack Reporter
+                <small class="text-light ms-2 opacity-75">{{.version}}</small>
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">
+                    <i class="fas fa-home me-1"></i>
+                    Dashboard
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Sidebar Navigation -->
+            <div class="col-md-3">
+                <div class="sticky-top">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-book me-2"></i>
+                                API Documentation
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <nav class="nav nav-pills flex-column">
+                                <a class="nav-link active" href="#overview">Overview</a>
+                                <a class="nav-link" href="#authentication">Authentication</a>
+                                <a class="nav-link" href="#endpoints">Endpoints</a>
+                                <a class="nav-link" href="#resources">Resources</a>
+                                <a class="nav-link" href="#examples">Examples</a>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <!-- Overview Section -->
+                <section id="overview" class="mb-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4 class="mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                API Overview
+                            </h4>
+                        </div>
+                        <div class="card-body">
+                            <h5>OpenStack Reporter API</h5>
+                            <p class="text-muted">Version: {{.version}}</p>
+                            <p>REST API for OpenStack resources reporting and management. This API allows you to fetch, cache, and export OpenStack resource information in various formats.</p>
+                            <div class="alert alert-info">
+                                <i class="fas fa-lightbulb me-2"></i>
+                                <strong>Base URL:</strong> <code>http://localhost:8080/api</code>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Authentication Section -->
+                <section id="authentication" class="mb-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4 class="mb-0">
+                                <i class="fas fa-key me-2"></i>
+                                Authentication
+                            </h4>
+                        </div>
+                        <div class="card-body">
+                            <p>The API uses OpenStack credentials configured via environment variables:</p>
+                            <div class="json-viewer">
+export OS_PROJECT_DOMAIN_NAME=vhc-pc
+export OS_USER_DOMAIN_NAME=vhc-pc
+export OS_USERNAME=your_username
+export OS_PASSWORD=your_password
+export OS_AUTH_URL=https://eu3-cloud.virtuozzo.com:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_AUTH_TYPE=password
+export OS_INSECURE=true</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Endpoints Section -->
+                <section id="endpoints" class="mb-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4 class="mb-0">
+                                <i class="fas fa-link me-2"></i>
+                                API Endpoints
+                            </h4>
+                        </div>
+                        <div class="card-body">
+                            <!-- GET /api/resources -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-get me-3">GET</span>
+                                    <h6 class="mb-0">/api/resources</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Get all OpenStack resources from cache or fetch from API</p>
+                                    <h6>Parameters:</h6>
+                                    <ul>
+                                        <li><code>force</code> (query, optional) - Force refresh from OpenStack API</li>
+                                    </ul>
+                                    <h6>Response Example:</h6>
+                                    <div class="json-viewer">
+{
+    "projects": [...],
+    "servers": [...],
+    "volumes": [...],
+    "load_balancers": [...],
+    "floating_ips": [...],
+    "routers": [...],
+    "vpn_services": [...],
+    "clusters": [...],
+    "summary": {
+        "total_servers": 5,
+        "total_volumes": 3,
+        "total_load_balancers": 1
+    },
+    "generated_at": "2025-01-15T10:30:00Z"
+}</div>
+                                </div>
+                            </div>
+
+                            <!-- POST /api/refresh -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-post me-3">POST</span>
+                                    <h6 class="mb-0">/api/refresh</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Force refresh all resources from OpenStack API</p>
+                                    <h6>Response Example:</h6>
+                                    <div class="json-viewer">
+{
+    "message": "Resources refreshed successfully",
+    "data": { /* Updated resource data */ }
+}</div>
+                                </div>
+                            </div>
+
+                            <!-- GET /api/export/pdf -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-get me-3">GET</span>
+                                    <h6 class="mb-0">/api/export/pdf</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Export current report to PDF format</p>
+                                    <h6>Response:</h6>
+                                    <ul>
+                                        <li><strong>Content-Type:</strong> application/pdf</li>
+                                        <li><strong>Content-Disposition:</strong> attachment; filename=openstack-report.pdf</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- GET /api/status -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-get me-3">GET</span>
+                                    <h6 class="mb-0">/api/status</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Get current report status and metadata</p>
+                                    <h6>Response Example:</h6>
+                                    <div class="json-viewer">
+{
+    "exists": true,
+    "last_update": "2025-01-15T10:30:00Z",
+    "age_minutes": 15,
+    "file_size": 1024
+}</div>
+                                </div>
+                            </div>
+
+                            <!-- GET /api/version -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-get me-3">GET</span>
+                                    <h6 class="mb-0">/api/version</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Get application version information</p>
+                                    <h6>Response Example:</h6>
+                                    <div class="json-viewer">
+{
+    "version": "v1.0.0",
+    "git_commit": "abc123...",
+    "build_time": "2025-01-15T10:00:00Z",
+    "go_version": "go1.21.0"
+}</div>
+                                </div>
+                            </div>
+
+                            <!-- GET /api/docs -->
+                            <div class="card endpoint-card">
+                                <div class="card-header d-flex align-items-center">
+                                    <span class="badge method-badge method-get me-3">GET</span>
+                                    <h6 class="mb-0">/api/docs</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p>Get this API documentation in JSON format</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Supported Resources Section -->
+                <section id="resources" class="mb-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4 class="mb-0">
+                                <i class="fas fa-cubes me-2"></i>
+                                Supported Resources
+                            </h4>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-folder-open me-3 text-primary"></i>
+                                            <div>
+                                                <strong>Projects</strong>
+                                                <small class="text-muted d-block">OpenStack projects/tenants</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-server me-3 text-success"></i>
+                                            <div>
+                                                <strong>Servers</strong>
+                                                <small class="text-muted d-block">Virtual machines (Nova)</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-hdd me-3 text-info"></i>
+                                            <div>
+                                                <strong>Volumes</strong>
+                                                <small class="text-muted d-block">Block storage volumes (Cinder)</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-balance-scale me-3 text-warning"></i>
+                                            <div>
+                                                <strong>Load Balancers</strong>
+                                                <small class="text-muted d-block">Load balancing services (Octavia)</small>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-globe me-3 text-danger"></i>
+                                            <div>
+                                                <strong>Floating IPs</strong>
+                                                <small class="text-muted d-block">Public IP addresses (Neutron)</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-route me-3 text-secondary"></i>
+                                            <div>
+                                                <strong>Routers</strong>
+                                                <small class="text-muted d-block">Network routers (Neutron)</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-shield-alt me-3 text-dark"></i>
+                                            <div>
+                                                <strong>VPN Services</strong>
+                                                <small class="text-muted d-block">VPN gateway services (Neutron)</small>
+                                            </div>
+                                        </li>
+                                        <li class="list-group-item d-flex align-items-center">
+                                            <i class="fas fa-dharmachakra me-3 text-primary"></i>
+                                            <div>
+                                                <strong>Clusters</strong>
+                                                <small class="text-muted d-block">Kubernetes clusters (Magnum)</small>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Examples Section -->
+                <section id="examples" class="mb-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4 class="mb-0">
+                                <i class="fas fa-code me-2"></i>
+                                Usage Examples
+                            </h4>
+                        </div>
+                        <div class="card-body">
+                            <h6>cURL Examples:</h6>
+
+                            <h6 class="mt-4">Get all resources:</h6>
+                            <div class="json-viewer">curl -X GET "http://localhost:8080/api/resources"</div>
+
+                            <h6 class="mt-4">Force refresh from OpenStack:</h6>
+                            <div class="json-viewer">curl -X GET "http://localhost:8080/api/resources?force=true"</div>
+
+                            <h6 class="mt-4">Refresh resources:</h6>
+                            <div class="json-viewer">curl -X POST "http://localhost:8080/api/refresh"</div>
+
+                            <h6 class="mt-4">Download PDF report:</h6>
+                            <div class="json-viewer">curl -X GET "http://localhost:8080/api/export/pdf" -o report.pdf</div>
+
+                            <h6 class="mt-4">Check API status:</h6>
+                            <div class="json-viewer">curl -X GET "http://localhost:8080/api/status"</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+
+                    // Update active nav link
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                }
+            });
+        });
+
+        // Update active nav link on scroll
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 100;
+                if (window.pageYOffset >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${current}`) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -193,7 +193,7 @@ class OpenStackReporter {
             <td>
                 <strong>${resource.name || 'Без имени'}</strong>
                 <br>
-                <small class="text-muted">${resource.id}</small>
+                <small class="text-muted">${this.getResourceSubtitle(resource)}</small>
             </td>
             <td>
                 <span class="resource-type-badge ${typeClass}">
@@ -310,8 +310,9 @@ class OpenStackReporter {
 		switch (resource.type) {
 			case 'server':
 				html += `
-                    <p><strong>Flavor:</strong> ${props.flavor_name || 'Неизвестно'}</p>
-                    <p><strong>Image:</strong> ${props.image_name || 'Неизвестно'}</p>
+                    <p><strong>Flavor:</strong> ${props.flavor_name || 'Unknown'}</p>
+                    ${props.flavor_id ? `<p><strong>Flavor ID:</strong> ${props.flavor_id}</p>` : ''}
+
                     <p><strong>Сети:</strong></p>
                     <ul>
                 `;
@@ -329,8 +330,17 @@ class OpenStackReporter {
                     <p><strong>Тип:</strong> ${props.volume_type || 'Неизвестно'}</p>
                     <p><strong>Загрузочный:</strong> ${props.bootable ? 'Да' : 'Нет'}</p>
                 `;
+				if (props.attached_to) {
+					html += `<p><strong>Подключен к:</strong> ${props.attached_to}</p>`;
+				}
 				if (props.attachments && props.attachments.length > 0) {
-					html += `<p><strong>Подключен к:</strong> ${props.attachments.join(', ')}</p>`;
+					html += `<p><strong>Детали подключения:</strong></p><ul>`;
+					props.attachments.forEach(attachment => {
+						html += `<li>Сервер: ${attachment.server_name || attachment.server_id}`;
+						if (attachment.device) html += ` (${attachment.device})`;
+						html += `</li>`;
+					});
+					html += '</ul>';
 				}
 				break;
 
@@ -341,6 +351,34 @@ class OpenStackReporter {
                 `;
 				if (props.fixed_ip) {
 					html += `<p><strong>Привязан к IP:</strong> ${props.fixed_ip}</p>`;
+				}
+				if (props.attached_resource_name) {
+					html += `<p><strong>Привязан к ресурсу:</strong> ${props.attached_resource_name}</p>`;
+				}
+				break;
+
+			case 'vpn_service':
+				html += `
+                    <p><strong>Описание:</strong> ${props.description || 'Не указано'}</p>
+                    <p><strong>Router ID:</strong> ${props.router_id}</p>
+                `;
+				if (props.subnet_id) {
+					html += `<p><strong>Subnet ID:</strong> ${props.subnet_id}</p>`;
+				}
+				if (props.peer_id) {
+					html += `<p><strong>Peer ID:</strong> ${props.peer_id}</p>`;
+				}
+				if (props.peer_address) {
+					html += `<p><strong>Peer Address:</strong> ${props.peer_address}</p>`;
+				}
+				if (props.auth_mode) {
+					html += `<p><strong>Auth Mode:</strong> ${props.auth_mode}</p>`;
+				}
+				if (props.ike_version) {
+					html += `<p><strong>IKE Version:</strong> ${props.ike_version}</p>`;
+				}
+				if (props.mtu && props.mtu > 0) {
+					html += `<p><strong>MTU:</strong> ${props.mtu}</p>`;
 				}
 				break;
 
@@ -434,6 +472,64 @@ class OpenStackReporter {
 			'status': 'circle'
 		};
 		return icons[groupBy] || 'list';
+	}
+
+	getResourceSubtitle(resource) {
+		const props = resource.properties;
+
+		switch (resource.type) {
+			case 'server':
+				// Показываем Flavor и IP адреса сетей
+				let flavor_name = props.flavor_name || 'Unknown Flavor';
+				let server_ip = '';
+
+				if (props.networks && typeof props.networks === 'object') {
+					const ips = Object.values(props.networks);
+					if (ips.length > 0) {
+						server_ip += ', ' + ips.join(', ');
+					}
+				}
+				let subtitle = 'Flavor: ' + flavor_name + ', IPs: ' + server_ip;
+				return subtitle;
+
+			case 'volume':
+				// Показываем к какой ВМ подключен
+				let volume_type = props.volume_type || '❓';
+				let volume_bootable = props.bootable ? '✅' : '➖';
+				let volume_attached_to = props.attached_to || '❓';
+				let volume_size = props.size || '❓';
+
+				if (props.attached_to) {
+					return `Type: ${volume_type}, Boot: ${volume_bootable}, Attached To: ${volume_attached_to}, Size: ${volume_size} GB`;
+				}
+				return `Type: ${volume_type}, Boot: ${volume_bootable}, Size: ${volume_size} GB`;
+
+			case 'floating_ip':
+				// Показываем к чему подключен
+				if (props.attached_resource_name) {
+					return `Подключен к: ${props.attached_resource_name}`;
+				}
+				return 'Не подключен';
+
+			case 'load_balancer':
+				// Показываем внутренний IP (и внешний если есть)
+				let ips = [];
+				if (props.vip_address) {
+					ips.push(props.vip_address);
+				}
+				if (props.floating_ip && props.floating_ip !== props.vip_address) {
+					ips.push(props.floating_ip);
+				}
+				return ips.length > 0 ? ips.join(', ') : 'Нет IP';
+
+			case 'vpn_service':
+				// Показываем Peer Address
+				return props.peer_address || 'Нет Peer Address';
+
+			default:
+				// Для остальных типов показываем ID
+				return resource.id;
+		}
 	}
 }
 

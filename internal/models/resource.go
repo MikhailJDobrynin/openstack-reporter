@@ -27,26 +27,34 @@ type Project struct {
 
 // Server represents OpenStack compute instance
 type Server struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	Status     string            `json:"status"`
-	FlavorName string            `json:"flavor_name"`
-	ImageName  string            `json:"image_name"`
-	Networks   map[string]string `json:"networks"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Status       string            `json:"status"`
+	FlavorName   string            `json:"flavor_name"`
+	FlavorID     string            `json:"flavor_id"`
+	Networks     map[string]string `json:"networks"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
 // Volume represents OpenStack block storage volume
 type Volume struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Status       string    `json:"status"`
-	Size         int       `json:"size"`
-	VolumeType   string    `json:"volume_type"`
-	Bootable     bool      `json:"bootable"`
-	Attachments  []string  `json:"attachments"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID             string               `json:"id"`
+	Name           string               `json:"name"`
+	Status         string               `json:"status"`
+	Size           int                  `json:"size"`
+	VolumeType     string               `json:"volume_type"`
+	Bootable       bool                 `json:"bootable"`
+	Attachments    []VolumeAttachment   `json:"attachments"`
+	AttachedTo     string               `json:"attached_to,omitempty"`
+	CreatedAt      time.Time            `json:"created_at"`
+}
+
+// VolumeAttachment represents volume attachment details
+type VolumeAttachment struct {
+	ServerID     string `json:"server_id"`
+	ServerName   string `json:"server_name,omitempty"`
+	Device       string `json:"device,omitempty"`
 }
 
 // LoadBalancer represents OpenStack load balancer
@@ -64,25 +72,31 @@ type LoadBalancer struct {
 
 // FloatingIP represents OpenStack floating IP
 type FloatingIP struct {
-	ID               string `json:"id"`
-	FloatingIP       string `json:"floating_ip"`
-	Status           string `json:"status"`
-	FixedIP          string `json:"fixed_ip,omitempty"`
-	PortID           string `json:"port_id,omitempty"`
-	FloatingNetworkID string `json:"floating_network_id"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                   string    `json:"id"`
+	FloatingIP           string    `json:"floating_ip"`
+	Status               string    `json:"status"`
+	FixedIP              string    `json:"fixed_ip,omitempty"`
+	PortID               string    `json:"port_id,omitempty"`
+	AttachedResourceName string    `json:"attached_resource_name,omitempty"`
+	FloatingNetworkID    string    `json:"floating_network_id"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // VPNService represents OpenStack VPN service
 type VPNService struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	RouterID    string `json:"router_id"`
-	SubnetID    string `json:"subnet_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	Status          string    `json:"status"`
+	RouterID        string    `json:"router_id"`
+	SubnetID        string    `json:"subnet_id"`
+	PeerID          string    `json:"peer_id,omitempty"`
+	PeerAddress     string    `json:"peer_address,omitempty"`
+	AuthMode        string    `json:"auth_mode,omitempty"`
+	IKEVersion      string    `json:"ike_version,omitempty"`
+	MTU             int       `json:"mtu,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // Cluster represents Kubernetes cluster

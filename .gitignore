@@ -72,3 +72,6 @@ tmp/
 
 # envs
 .env
+
+# reports
+*.pdf

@@ -30,11 +30,22 @@ build-linux: ## Build for Linux
 	@echo "Building $(BINARY_NAME) for Linux..."
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux main.go
 
-build-all: build build-linux ## Build for all platforms
+build-macos: ## Build for macOS
+	@echo "Building $(BINARY_NAME) for macOS..."
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-macos main.go
+
+build-all: build build-linux build-macos ## Build for all platforms
 
 run: ## Run the application
 	@echo "Running $(BINARY_NAME)..."
-	go run main.go
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		./bin/$(BINARY_NAME)-macos; \
+	elif [ "$$(uname)" = "Linux" ]; then \
+		./bin/$(BINARY_NAME)-linux; \
+	else \
+		echo "Unsupported OS: $$(uname)"; \
+		exit 1; \
+	fi
 
 dev: ## Run in development mode with auto-reload
 	@echo "Starting development server..."
@@ -115,6 +126,7 @@ release: clean build-all ## Prepare release builds
 	mkdir -p release
 	cp bin/$(BINARY_NAME) release/
 	cp bin/$(BINARY_NAME)-linux release/
+	cp bin/$(BINARY_NAME)-macos release/
 	cp .env.example release/
 	cp README.md release/
 	tar -czf release/$(BINARY_NAME)-$(VERSION).tar.gz -C release .
