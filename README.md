@@ -199,7 +199,6 @@ openstack-reporter/
 При каждом релизе автоматически создаются предкомпилированные бинарные файлы для:
 - **Linux**: `amd64`, `arm64`
 - **macOS**: `amd64`, `arm64`
-- **Windows**: `amd64`, `arm64`
 
 Скачайте с [страницы релизов GitHub](https://github.com/[username]/openstack-reporter/releases)
 

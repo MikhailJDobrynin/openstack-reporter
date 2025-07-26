@@ -38,13 +38,7 @@ build-macos: ## Build for macOS (multiple architectures)
 	@echo "Building $(BINARY_NAME) for macOS arm64..."
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 main.go
 
-build-windows: ## Build for Windows (multiple architectures)
-	@echo "Building $(BINARY_NAME) for Windows amd64..."
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe main.go
-	@echo "Building $(BINARY_NAME) for Windows arm64..."
-	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64.exe main.go
-
-build-all: build build-linux build-macos build-windows ## Build for all platforms
+build-all: build build-linux build-macos ## Build for all platforms
 
 run: ## Run the application
 	@echo "Running $(BINARY_NAME)..."
