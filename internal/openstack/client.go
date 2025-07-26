@@ -2,9 +2,11 @@ package openstack
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/gophercloud/gophercloud"
@@ -35,12 +37,27 @@ type Client struct {
 
 // NewClient creates a new OpenStack client
 func NewClient() (*Client, error) {
+	projectName := os.Getenv("OS_PROJECT_NAME")
+
+	// If no project specified, try to get the first available project via CLI
+	if projectName == "" {
+		fmt.Printf("DEBUG: No OS_PROJECT_NAME specified, getting first available project\n")
+		projects, err := getProjectsViaCommand()
+		if err == nil && len(projects) > 0 {
+			projectName = projects[0].Name
+			fmt.Printf("DEBUG: Using first available project: %s\n", projectName)
+		} else {
+			projectName = "infra" // fallback to a known project
+			fmt.Printf("DEBUG: CLI failed, using fallback project: %s\n", projectName)
+		}
+	}
+
 	opts := gophercloud.AuthOptions{
 		IdentityEndpoint: os.Getenv("OS_AUTH_URL"),
 		Username:         os.Getenv("OS_USERNAME"),
 		Password:         os.Getenv("OS_PASSWORD"),
 		DomainName:       os.Getenv("OS_USER_DOMAIN_NAME"),
-		TenantName:       os.Getenv("OS_PROJECT_NAME"),
+		TenantName:       projectName,
 	}
 
 	// Handle insecure connections
@@ -127,74 +144,62 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 		Resources:   []models.Resource{},
 	}
 
-	// Try to get all accessible projects first
-	allProjects, err := c.getAllProjects()
+	// Check if user wants all projects or specific project
+	if os.Getenv("OS_PROJECT_NAME") != "" {
+		// Single project mode - use current client
+		fmt.Printf("DEBUG: Single project mode: %s\n", os.Getenv("OS_PROJECT_NAME"))
+		currentProject, err := c.getCurrentProject()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current project: %w", err)
+		}
+		report.Projects = []models.Project{currentProject}
+
+		// Create project name mapping
+		projectNames := make(map[string]string)
+		projectNames[currentProject.ID] = currentProject.Name
+
+		// Get resources for current project
+		return c.collectResourcesForProjects(report, projectNames)
+	}
+
+	// Multi-project mode - get all projects via CLI and iterate
+	fmt.Printf("DEBUG: Multi-project mode - getting all accessible projects via CLI\n")
+	allProjects, err := getProjectsViaCommand()
 	if err != nil {
-		// Fallback to current project only if we can't get all projects
+		fmt.Printf("DEBUG: CLI project list failed: %v\n", err)
+		// Fallback to current project
 		currentProject, fallbackErr := c.getCurrentProject()
 		if fallbackErr != nil {
 			return nil, fmt.Errorf("failed to get projects: %w", err)
 		}
 		report.Projects = []models.Project{currentProject}
-	} else {
-		report.Projects = allProjects
+		projectNames := make(map[string]string)
+		projectNames[currentProject.ID] = currentProject.Name
+		return c.collectResourcesForProjects(report, projectNames)
 	}
 
-	// Create project name mapping
-	projectNames := make(map[string]string)
-	for _, project := range report.Projects {
-		projectNames[project.ID] = project.Name
-	}
+	report.Projects = allProjects
+	fmt.Printf("DEBUG: Found %d projects, collecting resources from each\n", len(allProjects))
 
-	// Get all resource types
-	serverResources, err := c.getServers(projectNames)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get servers: %w", err)
-	}
-	report.Resources = append(report.Resources, serverResources...)
+	// Collect resources from each project separately
+	var allResources []models.Resource
+		for _, project := range allProjects {
+		fmt.Printf("DEBUG: Collecting resources from project: %s (%s)\n", project.Name, project.ID)
 
-	volumeResources, err := c.getVolumes(projectNames)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get volumes: %w", err)
-	}
-	report.Resources = append(report.Resources, volumeResources...)
-
-	floatingIPResources, err := c.getFloatingIPs(projectNames)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get floating IPs: %w", err)
-	}
-	report.Resources = append(report.Resources, floatingIPResources...)
-
-	routerResources, err := c.getRouters(projectNames)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get routers: %w", err)
-	}
-	report.Resources = append(report.Resources, routerResources...)
-
-	// Optional services
-	if c.loadbalancerClient != nil {
-		lbResources, err := c.getLoadBalancers(projectNames)
-		if err == nil {
-			report.Resources = append(report.Resources, lbResources...)
+		projectResources, err := getResourcesForProject(project)
+		if err != nil {
+			fmt.Printf("DEBUG: Failed to get resources for project %s: %v\n", project.Name, err)
+			continue // Skip this project, continue with others
 		}
+
+		fmt.Printf("DEBUG: Found %d resources in project %s\n", len(projectResources), project.Name)
+		allResources = append(allResources, projectResources...)
 	}
 
-	// Get VPN IPSec Site Connections (actual VPN tunnels with peer info)
-	vpnResources, err := c.getVPNConnections(projectNames)
-	if err == nil {
-		report.Resources = append(report.Resources, vpnResources...)
-	}
+	report.Resources = allResources
+	report.Summary = c.calculateSummary(report.Resources, len(report.Projects))
 
-	if c.containerClient != nil {
-		clusterResources, err := c.getClusters(projectNames)
-		if err == nil {
-			report.Resources = append(report.Resources, clusterResources...)
-		}
-	}
-
-	// Calculate summary
-	report.Summary = c.calculateSummary(report.Resources, 1)
-
+	fmt.Printf("DEBUG: Total resources collected: %d from %d projects\n", len(allResources), len(allProjects))
 	return report, nil
 }
 
@@ -955,4 +960,344 @@ func (c *Client) getVPNPeerID(vpnServiceID string) string {
 	// look at IPSec connections or other VPN-related resources
 	// For now, return empty as this requires more complex VPN API calls
 	return ""
+}
+
+// getProjectsViaCommand gets project list using OpenStack CLI
+func getProjectsViaCommand() ([]models.Project, error) {
+	// Use openstack CLI to get project list (works even without identity:list_projects API permission)
+	cmd := exec.Command("openstack", "project", "list", "-f", "json")
+
+	// Set environment variables for the command
+	cmd.Env = os.Environ()
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute 'openstack project list': %w", err)
+	}
+
+	// Parse JSON output
+	var projects []struct {
+		ID          string `json:"ID"`
+		Name        string `json:"Name"`
+		Description string `json:"Description"`
+		Enabled     bool   `json:"Enabled"`
+	}
+
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return nil, fmt.Errorf("failed to parse project list JSON: %w", err)
+	}
+
+	var result []models.Project
+	for _, project := range projects {
+		result = append(result, models.Project{
+			ID:          project.ID,
+			Name:        project.Name,
+			Description: project.Description,
+			Enabled:     project.Enabled,
+		})
+	}
+
+	return result, nil
+}
+
+// getResourcesForProject creates a new client for specific project and gets its resources
+func getResourcesForProject(project models.Project) ([]models.Resource, error) {
+	// Create a new client specifically for this project
+	projectClient, err := createClientForProject(project.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client for project %s: %w", project.Name, err)
+	}
+
+	var resources []models.Resource
+	projectNames := make(map[string]string)
+	projectNames[project.ID] = project.Name
+
+	// Get all resource types for this project
+	serverResources, err := projectClient.getServersForSingleProject(projectNames)
+	if err == nil {
+		resources = append(resources, serverResources...)
+	}
+
+	volumeResources, err := projectClient.getVolumesForSingleProject(projectNames)
+	if err == nil {
+		resources = append(resources, volumeResources...)
+	}
+
+	floatingIPResources, err := projectClient.getFloatingIPs(projectNames)
+	if err == nil {
+		resources = append(resources, floatingIPResources...)
+	}
+
+	routerResources, err := projectClient.getRouters(projectNames)
+	if err == nil {
+		resources = append(resources, routerResources...)
+	}
+
+	if projectClient.loadbalancerClient != nil {
+		lbResources, err := projectClient.getLoadBalancers(projectNames)
+		if err == nil {
+			resources = append(resources, lbResources...)
+		}
+	}
+
+	vpnResources, err := projectClient.getVPNConnections(projectNames)
+	if err == nil {
+		resources = append(resources, vpnResources...)
+	}
+
+	if projectClient.containerClient != nil {
+		clusterResources, err := projectClient.getClusters(projectNames)
+		if err == nil {
+			resources = append(resources, clusterResources...)
+		}
+	}
+
+	return resources, nil
+}
+
+// createClientForProject creates a new OpenStack client for specific project
+func createClientForProject(projectName string) (*Client, error) {
+	opts := gophercloud.AuthOptions{
+		IdentityEndpoint: os.Getenv("OS_AUTH_URL"),
+		Username:         os.Getenv("OS_USERNAME"),
+		Password:         os.Getenv("OS_PASSWORD"),
+		DomainName:       os.Getenv("OS_USER_DOMAIN_NAME"),
+		TenantName:       projectName, // Use specific project name
+	}
+
+	var provider *gophercloud.ProviderClient
+	var err error
+
+	if os.Getenv("OS_INSECURE") == "true" {
+		config := &tls.Config{InsecureSkipVerify: true}
+		transport := &http.Transport{TLSClientConfig: config}
+		client := &http.Client{Transport: transport}
+		provider, err = openstack.NewClient(opts.IdentityEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider client: %w", err)
+		}
+		provider.HTTPClient = *client
+		err = openstack.Authenticate(provider, opts)
+	} else {
+		provider, err = openstack.AuthenticatedClient(opts)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authenticated client for project %s: %w", projectName, err)
+	}
+
+	computeClient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create compute client: %w", err)
+	}
+
+	blockstorageClient, err := openstack.NewBlockStorageV3(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create block storage client: %w", err)
+	}
+
+	networkClient, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network client: %w", err)
+	}
+
+	identityClient, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create identity client: %w", err)
+	}
+
+	loadbalancerClient, err := openstack.NewLoadBalancerV2(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		loadbalancerClient = nil
+	}
+
+	containerClient, err := openstack.NewContainerInfraV1(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
+	if err != nil {
+		containerClient = nil
+	}
+
+	return &Client{
+		provider:           provider,
+		computeClient:      computeClient,
+		blockstorageClient: blockstorageClient,
+		networkClient:      networkClient,
+		identityClient:     identityClient,
+		loadbalancerClient: loadbalancerClient,
+		containerClient:    containerClient,
+	}, nil
+}
+
+// collectResourcesForProjects collects resources using current client (single project mode)
+func (c *Client) collectResourcesForProjects(report *models.ResourceReport, projectNames map[string]string) (*models.ResourceReport, error) {
+	// Get all resource types
+	serverResources, err := c.getServers(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get servers: %w", err)
+	}
+	report.Resources = append(report.Resources, serverResources...)
+
+	volumeResources, err := c.getVolumes(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes: %w", err)
+	}
+	report.Resources = append(report.Resources, volumeResources...)
+
+	floatingIPResources, err := c.getFloatingIPs(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get floating IPs: %w", err)
+	}
+	report.Resources = append(report.Resources, floatingIPResources...)
+
+	routerResources, err := c.getRouters(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routers: %w", err)
+	}
+	report.Resources = append(report.Resources, routerResources...)
+
+	// Optional services
+	if c.loadbalancerClient != nil {
+		lbResources, err := c.getLoadBalancers(projectNames)
+		if err == nil {
+			report.Resources = append(report.Resources, lbResources...)
+		}
+	}
+
+	// Get VPN IPSec Site Connections (actual VPN tunnels with peer info)
+	vpnResources, err := c.getVPNConnections(projectNames)
+	if err == nil {
+		report.Resources = append(report.Resources, vpnResources...)
+	}
+
+	if c.containerClient != nil {
+		clusterResources, err := c.getClusters(projectNames)
+		if err == nil {
+			report.Resources = append(report.Resources, clusterResources...)
+		}
+	}
+
+	// Calculate summary
+	report.Summary = c.calculateSummary(report.Resources, len(report.Projects))
+
+	return report, nil
+}
+
+// getServersForSingleProject gets servers without AllTenants (for per-project clients)
+func (c *Client) getServersForSingleProject(projectNames map[string]string) ([]models.Resource, error) {
+	currentProject, _ := c.getCurrentProject()
+
+	// Always use project-scoped request (no AllTenants)
+	listOpts := servers.ListOpts{}
+	allPages, err := servers.List(c.computeClient, listOpts).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	serverList, err := servers.ExtractServers(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []models.Resource
+	for _, server := range serverList {
+		created := server.Created
+		updated := server.Updated
+
+		projectName := projectNames[server.TenantID]
+		projectID := server.TenantID
+		if projectName == "" {
+			projectName = currentProject.Name
+			projectID = currentProject.ID
+		}
+
+		flavorName, flavorID := c.getFlavorDetails(server.Flavor)
+
+		resources = append(resources, models.Resource{
+			ID:          server.ID,
+			Name:        server.Name,
+			Type:        "server",
+			ProjectID:   projectID,
+			ProjectName: projectName,
+			Status:      server.Status,
+			CreatedAt:   created,
+			UpdatedAt:   updated,
+			Properties: models.Server{
+				ID:         server.ID,
+				Name:       server.Name,
+				Status:     server.Status,
+				FlavorName: flavorName,
+				FlavorID:   flavorID,
+				Networks:   extractNetworks(server.Addresses),
+				CreatedAt:  created,
+				UpdatedAt:  updated,
+			},
+		})
+	}
+
+	return resources, nil
+}
+
+// getVolumesForSingleProject gets volumes without AllTenants (for per-project clients)
+func (c *Client) getVolumesForSingleProject(projectNames map[string]string) ([]models.Resource, error) {
+	currentProject, _ := c.getCurrentProject()
+
+	// Always use project-scoped request (no AllTenants)
+	listOpts := volumes.ListOpts{}
+	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	volumeList, err := volumes.ExtractVolumes(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []models.Resource
+	for _, volume := range volumeList {
+		created := volume.CreatedAt
+
+		projectID := currentProject.ID
+		projectName := currentProject.Name
+
+		attachments := c.getVolumeAttachments(volume.Attachments)
+		attachedTo := ""
+		if len(attachments) > 0 {
+			attachedTo = attachments[0].ServerName
+		}
+
+		resources = append(resources, models.Resource{
+			ID:          volume.ID,
+			Name:        volume.Name,
+			Type:        "volume",
+			ProjectID:   projectID,
+			ProjectName: projectName,
+			Status:      volume.Status,
+			CreatedAt:   created,
+			Properties: models.Volume{
+				ID:          volume.ID,
+				Name:        volume.Name,
+				Status:      volume.Status,
+				Size:        volume.Size,
+				VolumeType:  volume.VolumeType,
+				Bootable:    volume.Bootable == "true",
+				Attachments: attachments,
+				AttachedTo:  attachedTo,
+				CreatedAt:   created,
+			},
+		})
+	}
+
+	return resources, nil
 }
