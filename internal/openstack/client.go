@@ -300,11 +300,16 @@ func (c *Client) GetAllResourcesWithProgress(progressChan chan ProgressMessage) 
 
 	// Multi-project mode - get all projects via API with domain-scoped token
 	reporter.SendProgress("progress", "Multi-project mode - getting accessible projects", 0, 0, "", "", 0, nil)
+	fmt.Printf("DEBUG: Attempting to get projects via API...\n")
 	allProjects, err := c.getProjectsViaAPI()
 	if err != nil {
+		fmt.Printf("DEBUG: API project list failed: %v\n", err)
 		reporter.SendProgress("progress", "API project list failed, trying CLI fallback", 0, 0, "", "", 0, nil)
+		fmt.Printf("DEBUG: Attempting to get projects via CLI...\n")
 		allProjects, err = getProjectsViaCommand()
 		if err != nil {
+			fmt.Printf("DEBUG: CLI project list failed: %v\n", err)
+			fmt.Printf("DEBUG: Using single project fallback mode\n")
 			reporter.SendProgress("progress", "CLI project list failed, using fallback", 0, 0, "", "", 0, nil)
 			// Final fallback to current project
 			currentProject, fallbackErr := c.getCurrentProject()
@@ -319,6 +324,7 @@ func (c *Client) GetAllResourcesWithProgress(progressChan chan ProgressMessage) 
 	}
 
 	report.Projects = allProjects
+	fmt.Printf("DEBUG: Successfully found %d projects via API/CLI, entering true multi-project mode\n", len(allProjects))
 	reporter.SendProgress("progress", fmt.Sprintf("Found %d projects, starting resource collection", len(allProjects)), 0, len(allProjects), "", "", 0, nil)
 
 	// Collect resources from each project separately
