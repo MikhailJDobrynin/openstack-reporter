@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -55,6 +57,21 @@ func setupRoutes(r *gin.Engine) {
 	// Initialize handlers
 	handler := handlers.NewHandler()
 
+	// Add request logging middleware
+	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+			param.ClientIP,
+			param.TimeStamp.Format(time.RFC1123),
+			param.Method,
+			param.Path,
+			param.Request.Proto,
+			param.StatusCode,
+			param.Latency,
+			param.Request.UserAgent(),
+			param.ErrorMessage,
+		)
+	}))
+
 	// Static files
 	r.Static("/static", "./web/static")
 	r.LoadHTMLGlob("web/templates/*")
@@ -69,6 +86,14 @@ func setupRoutes(r *gin.Engine) {
 		api.GET("/version", getVersion)
 		api.GET("/docs", getAPIDocs)
 	}
+
+	log.Println("Routes registered:")
+	log.Println("  GET  /api/resources")
+	log.Println("  POST /api/refresh")
+	log.Println("  GET  /api/export/pdf")
+	log.Println("  GET  /api/status")
+	log.Println("  GET  /api/version")
+	log.Println("  GET  /api/docs")
 
 	// Web routes
 	r.GET("/", indexHandler)
