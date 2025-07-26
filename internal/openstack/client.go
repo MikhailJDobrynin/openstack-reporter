@@ -345,17 +345,84 @@ func (c *Client) getServers(projectNames map[string]string) ([]models.Resource, 
 }
 
 func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, error) {
-	// Get current project info for fallback
+	var allResources []models.Resource
 	currentProject, _ := c.getCurrentProject()
 
-	// Try to get volumes from all tenants first, fallback to current tenant only
-	listOpts := volumes.ListOpts{AllTenants: true}
+	// If we have multiple projects, try to get volumes for each project separately
+	if len(projectNames) > 1 {
+		for projectID, projectName := range projectNames {
+			projectVolumes, err := c.getVolumesForProject(projectID, projectName)
+			if err != nil {
+				fmt.Printf("DEBUG: Failed to get volumes for project %s (%s): %v\n", projectName, projectID, err)
+				continue // Skip this project and continue with others
+			}
+			allResources = append(allResources, projectVolumes...)
+		}
+
+		if len(allResources) > 0 {
+			return allResources, nil
+		}
+	}
+
+	// Fallback: get volumes without project filtering (current approach)
+	listOpts := volumes.ListOpts{}
 	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
 	if err != nil {
-		// Fallback to current tenant only if AllTenants fails
-		listOpts = volumes.ListOpts{}
-		allPages, err = volumes.List(c.blockstorageClient, listOpts).AllPages()
+		return nil, err
 	}
+
+	volumeList, err := volumes.ExtractVolumes(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, volume := range volumeList {
+		created := volume.CreatedAt
+
+		// Use current project as fallback when we can't determine the actual project
+		projectID := currentProject.ID
+		projectName := currentProject.Name
+
+				// Get detailed attachment information including server names
+		attachments := c.getVolumeAttachments(volume.Attachments)
+		attachedTo := ""
+		if len(attachments) > 0 {
+			attachedTo = attachments[0].ServerName
+		}
+
+		allResources = append(allResources, models.Resource{
+			ID:          volume.ID,
+			Name:        volume.Name,
+			Type:        "volume",
+			ProjectID:   projectID,
+			ProjectName: projectName,
+			Status:      volume.Status,
+			CreatedAt:   created,
+			Properties: models.Volume{
+				ID:          volume.ID,
+				Name:        volume.Name,
+				Status:      volume.Status,
+				Size:        volume.Size,
+				VolumeType:  volume.VolumeType,
+				Bootable:    volume.Bootable == "true",
+				Attachments: attachments,
+				AttachedTo:  attachedTo,
+				CreatedAt:   created,
+			},
+		})
+	}
+
+	return allResources, nil
+}
+
+func (c *Client) getVolumesForProject(projectID, projectName string) ([]models.Resource, error) {
+	// Use TenantID filter to get volumes for specific project
+	listOpts := volumes.ListOpts{
+		AllTenants: true,
+		TenantID:   projectID,
+	}
+
+	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
 	if err != nil {
 		return nil, err
 	}
@@ -369,18 +436,7 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 	for _, volume := range volumeList {
 		created := volume.CreatedAt
 
-		// Get project ID from volume or use current project as fallback
-		projectID := volume.ProjectID
-		if projectID == "" {
-			projectID = currentProject.ID
-		}
-
-		projectName := projectNames[projectID]
-		if projectName == "" {
-			projectName = currentProject.Name
-		}
-
-				// Get detailed attachment information including server names
+		// Get detailed attachment information including server names
 		attachments := c.getVolumeAttachments(volume.Attachments)
 		attachedTo := ""
 		if len(attachments) > 0 {
@@ -409,6 +465,7 @@ func (c *Client) getVolumes(projectNames map[string]string) ([]models.Resource, 
 		})
 	}
 
+	fmt.Printf("DEBUG: Found %d volumes for project %s (%s)\n", len(resources), projectName, projectID)
 	return resources, nil
 }
 
