@@ -109,6 +109,19 @@
                 </select>
             </div>
             <div class="col-md-4">
+                <label for="filterType" class="form-label">Фильтр по типу:</label>
+                <select class="form-select" id="filterType">
+                    <option value="server">Виртуальные машины</option>
+                    <option value="volume">Диски</option>
+                    <option value="floating_ip">Floating IP</option>
+                    <option value="router">Роутеры</option>
+                    <option value="load_balancer">Балансировщики</option>
+                    <option value="vpn_service">VPN сервисы</option>
+                    <option value="cluster">Kubernetes кластеры</option>
+                    <option value="">Все типы</option>
+                </select>
+            </div>
+            <div class="col-md-4">
                 <label for="sortBy" class="form-label">Сортировка:</label>
                 <select class="form-select" id="sortBy">
                     <option value="name">По имени (А-Я)</option>
@@ -119,19 +132,6 @@
                     <option value="status_desc">По статусу (Я-А)</option>
                     <option value="type">По типу (А-Я)</option>
                     <option value="type_desc">По типу (Я-А)</option>
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label for="filterType" class="form-label">Фильтр по типу:</label>
-                <select class="form-select" id="filterType">
-                    <option value="">Все типы</option>
-                    <option value="server">Виртуальные машины</option>
-                    <option value="volume">Диски</option>
-                    <option value="floating_ip">Floating IP</option>
-                    <option value="router">Роутеры</option>
-                    <option value="load_balancer">Балансировщики</option>
-                    <option value="vpn_service">VPN сервисы</option>
-                    <option value="cluster">Kubernetes кластеры</option>
                 </select>
             </div>
         </div>
