@@ -27,37 +27,14 @@ jobs:
         run: |
           make build-all
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          CURRENT_TAG=${GITHUB_REF#refs/tags/}
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -1 || echo "")
-
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          echo "## Changelog for ${CURRENT_TAG}" >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
-
-          if [ -n "$PREV_TAG" ]; then
-            echo "### Changes since ${PREV_TAG}" >> $GITHUB_ENV
-            echo "" >> $GITHUB_ENV
-            git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%an)" --no-merges >> $GITHUB_ENV
-          else
-            echo "### Initial release" >> $GITHUB_ENV
-            echo "" >> $GITHUB_ENV
-            git log --pretty=format:"- %s (%an)" --no-merges >> $GITHUB_ENV
-          fi
-
-          echo "EOF" >> $GITHUB_ENV
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
+          generate_release_notes: true
           body: |
             # OpenStack Reporter ${{ github.ref_name }}
-
-            ${{ env.CHANGELOG }}
 
             ## Docker Image
 
