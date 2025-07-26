@@ -33,14 +33,22 @@ func Get() Info {
 
 // GetVersionString returns a formatted version string
 func GetVersionString() string {
+	shortCommit := GitCommit
 	if GitCommit != "unknown" && len(GitCommit) > 7 {
-		GitCommit = GitCommit[:7] // Shorten commit hash
+		shortCommit = GitCommit[:7] // Shorten commit hash
 	}
 
 	if Version == "dev" {
-		return fmt.Sprintf("v%s-%s", Version, GitCommit)
+		return fmt.Sprintf("v%s-%s", Version, shortCommit)
 	}
-	return fmt.Sprintf("v%s", Version)
+
+	// Remove the 'v' prefix if it already exists to avoid double 'v'
+	version := Version
+	if len(version) > 0 && version[0] == 'v' {
+		return version
+	}
+
+	return fmt.Sprintf("v%s", version)
 }
 
 // GetFullVersionString returns detailed version information
