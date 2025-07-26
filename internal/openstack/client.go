@@ -1219,9 +1219,19 @@ func getProjectsViaCommand() ([]models.Project, error) {
 	// Set environment variables for the command
 	cmd.Env = os.Environ()
 
-	output, err := cmd.Output()
+	// Debug: print environment variables being passed to CLI
+	fmt.Printf("DEBUG: CLI environment variables:\n")
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "OS_") {
+			fmt.Printf("  %s\n", env)
+		}
+	}
+
+	// Capture both stdout and stderr for better error diagnosis
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute 'openstack project list': %w", err)
+		fmt.Printf("DEBUG: CLI command failed with output: %s\n", string(output))
+		return nil, fmt.Errorf("failed to execute 'openstack project list': %w (output: %s)", err, string(output))
 	}
 
 	// Parse JSON output
