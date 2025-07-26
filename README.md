@@ -230,12 +230,46 @@ openstack-reporter/
 - Приложение работает с текущим проектом пользователя (не требует админских прав)
 - Для получения данных всех проектов нужны админские права, но это не обязательно
 
+### Проблемы с экспортом PDF
+
+Если экспорт PDF не работает (ошибка 404):
+
+1. **Проверьте, что данные загружены:**
+   ```bash
+   curl http://localhost:8080/api/status
+   ```
+
+2. **Проверьте логи Docker контейнера:**
+   ```bash
+   docker logs <container_name>
+   ```
+
+3. **Проверьте права доступа к директории data:**
+   ```bash
+   docker exec <container_name> ls -la /app/data
+   ```
+
+4. **Тестирование с детальными логами:**
+   ```bash
+   # В логах должно быть:
+   # Routes registered:
+   #   GET  /api/export/pdf
+   # PDF export requested from <IP>
+   # PDF export: loaded report with N resources
+   # PDF export: successfully generated PDF (X bytes)
+   ```
+
 ### Логи
 
 Приложение выводит логи в stdout. Для отладки проверьте:
 ```bash
 go run main.go 2>&1 | tee app.log
 ```
+
+В версии v1.0.10+ добавлено детальное логирование:
+- Регистрация маршрутов при запуске
+- Детальные HTTP запросы с IP и временными метками
+- Процесс экспорта PDF с диагностикой ошибок
 
 ## Лицензия
 
