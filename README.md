@@ -194,6 +194,15 @@ openstack-reporter/
 - `ghcr.io/[username]/openstack-reporter:latest` - последняя версия
 - `ghcr.io/[username]/openstack-reporter:v1.0.0` - тегированные релизы
 
+### Бинарные файлы
+
+При каждом релизе автоматически создаются предкомпилированные бинарные файлы для:
+- **Linux**: `amd64`, `arm64`
+- **macOS**: `amd64`, `arm64`
+- **Windows**: `amd64`, `arm64`
+
+Скачайте с [страницы релизов GitHub](https://github.com/[username]/openstack-reporter/releases)
+
 ### Добавление новых типов ресурсов
 
 1. Добавить модель в `internal/models/resource.go`

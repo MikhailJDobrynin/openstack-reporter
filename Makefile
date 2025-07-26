@@ -26,15 +26,25 @@ build: ## Build the application
 	@echo "Building $(BINARY_NAME)..."
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME) main.go
 
-build-linux: ## Build for Linux
-	@echo "Building $(BINARY_NAME) for Linux..."
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux main.go
+build-linux: ## Build for Linux (multiple architectures)
+	@echo "Building $(BINARY_NAME) for Linux amd64..."
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 main.go
+	@echo "Building $(BINARY_NAME) for Linux arm64..."
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64 main.go
 
-build-macos: ## Build for macOS
-	@echo "Building $(BINARY_NAME) for macOS..."
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-macos main.go
+build-macos: ## Build for macOS (multiple architectures)
+	@echo "Building $(BINARY_NAME) for macOS amd64..."
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 main.go
+	@echo "Building $(BINARY_NAME) for macOS arm64..."
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 main.go
 
-build-all: build build-linux build-macos ## Build for all platforms
+build-windows: ## Build for Windows (multiple architectures)
+	@echo "Building $(BINARY_NAME) for Windows amd64..."
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe main.go
+	@echo "Building $(BINARY_NAME) for Windows arm64..."
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64.exe main.go
+
+build-all: build build-linux build-macos build-windows ## Build for all platforms
 
 run: ## Run the application
 	@echo "Running $(BINARY_NAME)..."

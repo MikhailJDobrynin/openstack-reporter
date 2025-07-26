@@ -78,11 +78,25 @@ jobs:
 
             ## Binary Downloads
 
-            Pre-compiled binaries are attached to this release.
+            Pre-compiled binaries are available for multiple platforms:
+
+            ### Linux
+            - `openstack-reporter-linux-amd64` - Linux x86_64
+            - `openstack-reporter-linux-arm64` - Linux ARM64
+
+            ### macOS
+            - `openstack-reporter-darwin-amd64` - macOS Intel
+            - `openstack-reporter-darwin-arm64` - macOS Apple Silicon
+
+            ### Windows
+            - `openstack-reporter-windows-amd64.exe` - Windows x86_64
+            - `openstack-reporter-windows-arm64.exe` - Windows ARM64
           files: |
             bin/openstack-reporter-linux-amd64
             bin/openstack-reporter-linux-arm64
             bin/openstack-reporter-darwin-amd64
             bin/openstack-reporter-darwin-arm64
+            bin/openstack-reporter-windows-amd64.exe
+            bin/openstack-reporter-windows-arm64.exe
           draft: false
           prerelease: false
