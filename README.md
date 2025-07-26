@@ -33,6 +33,33 @@
 
 ### Быстрый старт
 
+#### Вариант 1: Docker (рекомендуется)
+
+```bash
+docker run -d \
+  --name openstack-reporter \
+  -p 8080:8080 \
+  -e OS_USERNAME=your_username \
+  -e OS_PASSWORD=your_password \
+  -e OS_AUTH_URL=https://your-openstack.example.com:5000/v3 \
+  -e OS_PROJECT_DOMAIN_NAME=your_domain \
+  -e OS_USER_DOMAIN_NAME=your_domain \
+  -e OS_IDENTITY_API_VERSION=3 \
+  -e OS_AUTH_TYPE=password \
+  -e OS_INSECURE=true \
+  ghcr.io/[username]/openstack-reporter:latest
+```
+
+#### Вариант 2: Docker Compose
+
+```bash
+curl -O https://raw.githubusercontent.com/[username]/openstack-reporter/main/docker-compose.yml
+# Отредактировать переменные окружения в docker-compose.yml
+docker-compose up -d
+```
+
+#### Вариант 3: Сборка из исходников
+
 1. **Клонировать репозиторий**
 ```bash
 git clone <repository-url>
@@ -150,6 +177,22 @@ openstack-reporter/
 - **internal/handlers** - HTTP обработчики для API
 - **internal/pdf** - Генератор PDF отчетов
 - **web/** - Веб-интерфейс (HTML, CSS, JavaScript)
+
+### CI/CD
+
+Проект использует GitHub Actions для автоматизации:
+
+- **Тестирование и сборка** - при каждом push и PR
+- **Docker образы** - автоматическая публикация в GitHub Container Registry
+- **Мультиплатформенная сборка** - поддержка `linux/amd64` и `linux/arm64`
+- **Сканирование безопасности** - проверка образов на уязвимости
+- **Релизы** - автоматическое создание GitHub релизов с бинарными файлами
+
+### Docker образы
+
+Доступны в GitHub Container Registry:
+- `ghcr.io/[username]/openstack-reporter:latest` - последняя версия
+- `ghcr.io/[username]/openstack-reporter:v1.0.0` - тегированные релизы
 
 ### Добавление новых типов ресурсов
 

@@ -1,0 +1,79 @@
+# Git and version control
+.git
+.gitignore
+
+# GitHub
+.github
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Data directory
+data/
+
+# Test files
+*_test.go
+test/
+tests/
+
+# Documentation
+*.md
+docs/
+
+# Backup files
+*.bak
+*.backup
+backup_*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage files
+coverage.out
+*.coverage
+
+# Air (live reload tool)
+.air.toml
+tmp/
+
+# Dependencies (will be downloaded in Docker)
+vendor/
+
+# Local development
+docker-compose.yml
+docker-compose.override.yml
+
+# Editor configs
+.editorconfig
+
+# Makefile (not needed in container)
+Makefile

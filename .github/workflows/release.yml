@@ -1,0 +1,88 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+
+      - name: Build binaries
+        run: |
+          make build-all
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1)
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+
+          echo "## Changes since ${PREV_TAG}" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+
+          # Get commits since previous tag
+          git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%an)" --no-merges >> CHANGELOG.md
+
+          # Set output for use in release notes
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            # OpenStack Reporter ${{ github.ref_name }}
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Docker Image
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+
+            ## Quick Start
+
+            ```bash
+            # Using Docker
+            docker run -d \
+              --name openstack-reporter \
+              -p 8080:8080 \
+              -e OS_USERNAME=your_username \
+              -e OS_PASSWORD=your_password \
+              -e OS_AUTH_URL=your_auth_url \
+              -e OS_PROJECT_DOMAIN_NAME=your_domain \
+              -e OS_USER_DOMAIN_NAME=your_domain \
+              ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+
+            ## Binary Downloads
+
+            Pre-compiled binaries are attached to this release.
+          files: |
+            bin/openstack-reporter-linux-amd64
+            bin/openstack-reporter-linux-arm64
+            bin/openstack-reporter-darwin-amd64
+            bin/openstack-reporter-darwin-arm64
+          draft: false
+          prerelease: false
