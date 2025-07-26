@@ -183,23 +183,37 @@ func (c *Client) GetAllResources() (*models.ResourceReport, error) {
 
 	// Collect resources from each project separately
 	var allResources []models.Resource
-		for _, project := range allProjects {
-		fmt.Printf("DEBUG: Collecting resources from project: %s (%s)\n", project.Name, project.ID)
+	totalProjects := len(allProjects)
+
+	for i, project := range allProjects {
+		fmt.Printf("🔍 [%d/%d] Collecting resources from project: %s (%s)\n", i+1, totalProjects, project.Name, project.ID)
 
 		projectResources, err := getResourcesForProject(project)
 		if err != nil {
-			fmt.Printf("DEBUG: Failed to get resources for project %s: %v\n", project.Name, err)
+			fmt.Printf("❌ Failed to get resources for project %s: %v\n", project.Name, err)
 			continue // Skip this project, continue with others
 		}
 
-		fmt.Printf("DEBUG: Found %d resources in project %s\n", len(projectResources), project.Name)
+		fmt.Printf("✅ Found %d resources in project %s\n", len(projectResources), project.Name)
 		allResources = append(allResources, projectResources...)
 	}
 
 	report.Resources = allResources
 	report.Summary = c.calculateSummary(report.Resources, len(report.Projects))
 
-	fmt.Printf("DEBUG: Total resources collected: %d from %d projects\n", len(allResources), len(allProjects))
+	fmt.Printf("\n🎯 SUMMARY: Total %d resources collected from %d projects\n", len(allResources), len(allProjects))
+
+	// Show breakdown by resource type
+	typeCount := make(map[string]int)
+	for _, resource := range allResources {
+		typeCount[resource.Type]++
+	}
+
+	fmt.Printf("📊 Resource breakdown:\n")
+	for resourceType, count := range typeCount {
+		fmt.Printf("   - %s: %d\n", resourceType, count)
+	}
+
 	return report, nil
 }
 
@@ -1104,43 +1118,71 @@ func getResourcesForProject(project models.Project) ([]models.Resource, error) {
 	projectNames := make(map[string]string)
 	projectNames[project.ID] = project.Name
 
-	// Get all resource types for this project
+	// Get all resource types for this project with detailed logging
+	fmt.Printf("   📋 Collecting servers...")
 	serverResources, err := projectClient.getServersForSingleProject(projectNames)
 	if err == nil {
 		resources = append(resources, serverResources...)
+		fmt.Printf(" %d found\n", len(serverResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
 	}
 
+	fmt.Printf("   💾 Collecting volumes...")
 	volumeResources, err := projectClient.getVolumesForSingleProject(projectNames)
 	if err == nil {
 		resources = append(resources, volumeResources...)
+		fmt.Printf(" %d found\n", len(volumeResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
 	}
 
+	fmt.Printf("   🌐 Collecting floating IPs...")
 	floatingIPResources, err := projectClient.getFloatingIPs(projectNames)
 	if err == nil {
 		resources = append(resources, floatingIPResources...)
+		fmt.Printf(" %d found\n", len(floatingIPResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
 	}
 
+	fmt.Printf("   🔀 Collecting routers...")
 	routerResources, err := projectClient.getRouters(projectNames)
 	if err == nil {
 		resources = append(resources, routerResources...)
+		fmt.Printf(" %d found\n", len(routerResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
 	}
 
 	if projectClient.loadbalancerClient != nil {
+		fmt.Printf("   ⚖️  Collecting load balancers...")
 		lbResources, err := projectClient.getLoadBalancers(projectNames)
 		if err == nil {
 			resources = append(resources, lbResources...)
+			fmt.Printf(" %d found\n", len(lbResources))
+		} else {
+			fmt.Printf(" failed: %v\n", err)
 		}
 	}
 
+	fmt.Printf("   🔒 Collecting VPN connections...")
 	vpnResources, err := projectClient.getVPNConnections(projectNames)
 	if err == nil {
 		resources = append(resources, vpnResources...)
+		fmt.Printf(" %d found\n", len(vpnResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
 	}
 
 	if projectClient.containerClient != nil {
+		fmt.Printf("   ☸️  Collecting K8s clusters...")
 		clusterResources, err := projectClient.getClusters(projectNames)
 		if err == nil {
 			resources = append(resources, clusterResources...)
+			fmt.Printf(" %d found\n", len(clusterResources))
+		} else {
+			fmt.Printf(" failed: %v\n", err)
 		}
 	}
 
@@ -1287,8 +1329,6 @@ func (c *Client) collectResourcesForProjects(report *models.ResourceReport, proj
 
 // getServersForSingleProject gets servers without AllTenants (for per-project clients)
 func (c *Client) getServersForSingleProject(projectNames map[string]string) ([]models.Resource, error) {
-	currentProject, _ := c.getCurrentProject()
-
 	// Always use project-scoped request (no AllTenants)
 	listOpts := servers.ListOpts{}
 	allPages, err := servers.List(c.computeClient, listOpts).AllPages()
@@ -1301,6 +1341,14 @@ func (c *Client) getServersForSingleProject(projectNames map[string]string) ([]m
 		return nil, err
 	}
 
+	// Get the project name from the first entry in projectNames map
+	var fallbackProjectName, fallbackProjectID string
+	for id, name := range projectNames {
+		fallbackProjectName = name
+		fallbackProjectID = id
+		break
+	}
+
 	var resources []models.Resource
 	for _, server := range serverList {
 		created := server.Created
@@ -1309,8 +1357,9 @@ func (c *Client) getServersForSingleProject(projectNames map[string]string) ([]m
 		projectName := projectNames[server.TenantID]
 		projectID := server.TenantID
 		if projectName == "" {
-			projectName = currentProject.Name
-			projectID = currentProject.ID
+			// Use the project name from the scoped client, not "Current Project"
+			projectName = fallbackProjectName
+			projectID = fallbackProjectID
 		}
 
 		flavorName, flavorID := c.getFlavorDetails(server.Flavor)
@@ -1342,8 +1391,6 @@ func (c *Client) getServersForSingleProject(projectNames map[string]string) ([]m
 
 // getVolumesForSingleProject gets volumes without AllTenants (for per-project clients)
 func (c *Client) getVolumesForSingleProject(projectNames map[string]string) ([]models.Resource, error) {
-	currentProject, _ := c.getCurrentProject()
-
 	// Always use project-scoped request (no AllTenants)
 	listOpts := volumes.ListOpts{}
 	allPages, err := volumes.List(c.blockstorageClient, listOpts).AllPages()
@@ -1356,12 +1403,17 @@ func (c *Client) getVolumesForSingleProject(projectNames map[string]string) ([]m
 		return nil, err
 	}
 
+	// Get the project name from the first entry in projectNames map
+	var projectID, projectName string
+	for id, name := range projectNames {
+		projectID = id
+		projectName = name
+		break
+	}
+
 	var resources []models.Resource
 	for _, volume := range volumeList {
 		created := volume.CreatedAt
-
-		projectID := currentProject.ID
-		projectName := currentProject.Name
 
 		attachments := c.getVolumeAttachments(volume.Attachments)
 		attachedTo := ""
