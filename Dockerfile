@@ -32,8 +32,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Production stage
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install ca-certificates, Python, and OpenStack CLI for multi-project support
+RUN apk --no-cache add ca-certificates tzdata python3 py3-pip gcc musl-dev python3-dev linux-headers && \
+    pip3 install --break-system-packages --no-cache-dir --no-compile python-openstackclient && \
+    apk del py3-pip gcc musl-dev python3-dev linux-headers && \
+    rm -rf /root/.cache /tmp/* && \
+    ln -sf python3 /usr/bin/python
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
