@@ -117,8 +117,21 @@ setup-env: ## Setup environment file
 
 docker-build: ## Build Docker image
 	@echo "Building Docker image..."
-	docker build -t $(BINARY_NAME):$(VERSION) .
+	@export VERSION=$(VERSION) && \
+	export GIT_COMMIT=$(GIT_COMMIT) && \
+	export BUILD_TIME=$(BUILD_TIME) && \
+	docker builder prune -f
+	docker build --no-cache --build-arg VERSION=$$VERSION --build-arg GIT_COMMIT=$$GIT_COMMIT --build-arg BUILD_TIME=$$BUILD_TIME -t $(BINARY_NAME):$(VERSION) .
 	docker tag $(BINARY_NAME):$(VERSION) $(BINARY_NAME):latest
+
+# Build docker-compose image with version info
+
+docker-compose-build: ## Build Docker image via docker-compose with version info
+	@echo "Building Docker image via docker-compose..."
+	@export VERSION=$(VERSION) && \
+	export GIT_COMMIT=$(GIT_COMMIT) && \
+	export BUILD_TIME=$(BUILD_TIME) && \
+	docker-compose build --no-cache
 
 docker-run: ## Run Docker container
 	@echo "Running Docker container..."

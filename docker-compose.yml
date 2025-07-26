@@ -1,6 +1,11 @@
 services:
   openstack-reporter:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION}
+        GIT_COMMIT: ${GIT_COMMIT}
+        BUILD_TIME: ${BUILD_TIME}
     ports:
       - "8080:8080"
     environment:

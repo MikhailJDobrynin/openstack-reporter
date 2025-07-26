@@ -33,7 +33,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM alpine:latest
 
 # Install ca-certificates, Python, and OpenStack CLI for multi-project support
-RUN apk --no-cache add ca-certificates tzdata python3 py3-pip gcc musl-dev python3-dev linux-headers && \
+RUN apk --no-cache add ca-certificates tzdata python3 py3-pip py3-packaging gcc musl-dev python3-dev linux-headers && \
     pip3 install --break-system-packages --no-cache-dir --no-compile python-openstackclient && \
     apk del py3-pip gcc musl-dev python3-dev linux-headers && \
     rm -rf /root/.cache /tmp/* && \
