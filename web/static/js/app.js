@@ -395,7 +395,7 @@ class OpenStackReporter {
 		}
 	}
 
-		updateTableHeader() {
+	updateTableHeader() {
 		// Заголовок всегда остается "Тип"
 		const typeHeader = document.querySelector('#resourcesTable thead th:nth-child(2)');
 		typeHeader.textContent = 'Тип';

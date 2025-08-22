@@ -235,23 +235,40 @@ func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []
 				// Add subnet info to name for networks
 				displayName := name
 				if resourceType == "network" {
-					if network, ok := resource.Properties.(models.Network); ok {
-						if len(network.Subnets) > 0 {
-							subnetInfo := ""
-							for i, subnet := range network.Subnets {
-								if i >= 2 {
-									subnetInfo += fmt.Sprintf(" (+%d)", len(network.Subnets)-2)
-									break
+					// Properties приходят как map[string]interface{}
+					if props, ok := resource.Properties.(map[string]interface{}); ok {
+						if subnetsData, exists := props["subnets"]; exists {
+							if subnets, ok := subnetsData.([]interface{}); ok {
+								fmt.Printf("DEBUG: Network %s has %d subnets\n", name, len(subnets))
+								if len(subnets) > 0 {
+									subnetInfo := ""
+									for i, subnetData := range subnets {
+										if i >= 2 {
+											subnetInfo += fmt.Sprintf(" (+%d)", len(subnets)-2)
+											break
+										}
+										if i > 0 {
+											subnetInfo += ", "
+										}
+										if subnet, ok := subnetData.(map[string]interface{}); ok {
+											if cidr, exists := subnet["cidr"]; exists {
+												subnetInfo += cidr.(string)
+											}
+										}
+									}
+									displayName = fmt.Sprintf("%s\nSubnets: %s", name, subnetInfo)
+									fmt.Printf("DEBUG: Display name for %s: %s\n", name, displayName)
+								} else {
+									displayName = fmt.Sprintf("%s\nNo subnets", name)
+									fmt.Printf("DEBUG: No subnets for %s\n", name)
 								}
-								if i > 0 {
-									subnetInfo += ", "
-								}
-								subnetInfo += subnet.CIDR
 							}
-							displayName = fmt.Sprintf("%s\nSubnets: %s", name, subnetInfo)
 						} else {
 							displayName = fmt.Sprintf("%s\nNo subnets", name)
+							fmt.Printf("DEBUG: No subnets field for %s\n", name)
 						}
+					} else {
+						fmt.Printf("DEBUG: Failed to cast properties to map for %s\n", name)
 					}
 				}
 
@@ -260,8 +277,13 @@ func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []
 				if resourceType == "network" {
 					cellHeight = 8.0
 				}
-				
-				pdf.CellFormat(80, cellHeight, g.truncateString(displayName, 60), "1", 0, "L", false, 0, "")
+
+				// Не обрезаем текст для сетей, чтобы подсети были видны
+				if resourceType == "network" {
+					pdf.CellFormat(80, cellHeight, displayName, "1", 0, "L", false, 0, "")
+				} else {
+					pdf.CellFormat(80, cellHeight, g.truncateString(displayName, 60), "1", 0, "L", false, 0, "")
+				}
 				pdf.CellFormat(30, cellHeight, g.truncateString(resource.Status, 12), "1", 0, "C", false, 0, "")
 				pdf.CellFormat(35, cellHeight, createdDate, "1", 1, "C", false, 0, "")
 			}
