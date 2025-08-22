@@ -403,25 +403,48 @@ class OpenStackReporter {
 			groups[key].push(resource);
 		});
 
-		// Render groups
+		// Convert groups to flat array for pagination
+		const flatData = [];
 		Object.keys(groups).sort().forEach(groupName => {
-			// Group header
-			const headerRow = document.createElement('tr');
-			headerRow.className = 'table-secondary';
-			headerRow.innerHTML = `
-                <td colspan="6">
-                    <strong>
-                        <i class="fas fa-${this.getGroupIcon(groupBy)} me-2"></i>
-                        ${groupName} (${groups[groupName].length})
-                    </strong>
-                </td>
-            `;
-			tbody.appendChild(headerRow);
-
-			// Group items
-			groups[groupName].forEach(resource => {
-				tbody.appendChild(this.createResourceRow(resource));
+			// Add group header as a special row
+			flatData.push({
+				type: 'group_header',
+				groupName: groupName,
+				count: groups[groupName].length,
+				groupBy: groupBy
 			});
+
+			// Add group items
+			groups[groupName].forEach(resource => {
+				flatData.push({
+					type: 'resource',
+					data: resource
+				});
+			});
+		});
+
+		// Apply pagination to flat data
+		const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+		const endIndex = startIndex + this.itemsPerPage;
+		const pageData = flatData.slice(startIndex, endIndex);
+
+		// Render page data
+		pageData.forEach(item => {
+			if (item.type === 'group_header') {
+				const headerRow = document.createElement('tr');
+				headerRow.className = 'table-secondary';
+				headerRow.innerHTML = `
+					<td colspan="6">
+						<strong>
+							<i class="fas fa-${this.getGroupIcon(item.groupBy)} me-2"></i>
+							${item.groupName} (${item.count})
+						</strong>
+					</td>
+				`;
+				tbody.appendChild(headerRow);
+			} else {
+				tbody.appendChild(this.createResourceRow(item.data));
+			}
 		});
 	}
 
@@ -473,7 +496,24 @@ class OpenStackReporter {
 	}
 
 	renderPagination() {
-		const totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
+		const groupBy = document.getElementById('groupBy').value;
+		let totalItems = this.filteredData.length;
+
+		// For grouped data, we need to count group headers as well
+		if (groupBy === 'project' || groupBy === 'type' || groupBy === 'status') {
+			const groups = {};
+			this.filteredData.forEach(resource => {
+				const key = groupBy === 'project' ? resource.project_name : resource[groupBy];
+				if (!groups[key]) {
+					groups[key] = [];
+				}
+				groups[key].push(resource);
+			});
+			// Add group headers to the count
+			totalItems += Object.keys(groups).length;
+		}
+
+		const totalPages = Math.ceil(totalItems / this.itemsPerPage);
 		const pagination = document.getElementById('pagination');
 		const paginationNav = document.getElementById('paginationNav');
 
@@ -520,7 +560,24 @@ class OpenStackReporter {
 	}
 
 	changePage(page) {
-		const totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
+		const groupBy = document.getElementById('groupBy').value;
+		let totalItems = this.filteredData.length;
+		
+		// For grouped data, we need to count group headers as well
+		if (groupBy === 'project' || groupBy === 'type' || groupBy === 'status') {
+			const groups = {};
+			this.filteredData.forEach(resource => {
+				const key = groupBy === 'project' ? resource.project_name : resource[groupBy];
+				if (!groups[key]) {
+					groups[key] = [];
+				}
+				groups[key].push(resource);
+			});
+			// Add group headers to the count
+			totalItems += Object.keys(groups).length;
+		}
+		
+		const totalPages = Math.ceil(totalItems / this.itemsPerPage);
 
 		if (page < 1 || page > totalPages) return;
 
