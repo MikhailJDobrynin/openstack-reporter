@@ -85,6 +85,7 @@ func (g *Generator) addSummary(pdf *gofpdf.Fpdf, summary models.Summary) {
 		{"Projects", strconv.Itoa(summary.TotalProjects)},
 		{"Virtual Machines", strconv.Itoa(summary.TotalServers)},
 		{"Volumes", strconv.Itoa(summary.TotalVolumes)},
+		{"Networks", strconv.Itoa(summary.TotalNetworks)},
 		{"Load Balancers", strconv.Itoa(summary.TotalLoadBalancers)},
 		{"Floating IPs", strconv.Itoa(summary.TotalFloatingIPs)},
 		{"VPN Services", strconv.Itoa(summary.TotalVPNServices)},

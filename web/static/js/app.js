@@ -717,6 +717,7 @@ class OpenStackReporter {
 		document.getElementById('totalProjects').textContent = summary.total_projects || 0;
 		document.getElementById('totalServers').textContent = summary.total_servers || 0;
 		document.getElementById('totalVolumes').textContent = summary.total_volumes || 0;
+		document.getElementById('totalNetworks').textContent = summary.total_networks || 0;
 
 		const networkTotal = (summary.total_networks || 0) +
 			(summary.total_floating_ips || 0) +
