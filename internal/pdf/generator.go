@@ -255,9 +255,15 @@ func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []
 					}
 				}
 
-				pdf.CellFormat(80, 6, g.truncateString(displayName, 40), "1", 0, "L", false, 0, "")
-				pdf.CellFormat(30, 6, g.truncateString(resource.Status, 12), "1", 0, "C", false, 0, "")
-				pdf.CellFormat(35, 6, createdDate, "1", 1, "C", false, 0, "")
+				// Увеличиваем высоту ячейки для сетей с подсетями
+				cellHeight := 6.0
+				if resourceType == "network" {
+					cellHeight = 8.0
+				}
+				
+				pdf.CellFormat(80, cellHeight, g.truncateString(displayName, 60), "1", 0, "L", false, 0, "")
+				pdf.CellFormat(30, cellHeight, g.truncateString(resource.Status, 12), "1", 0, "C", false, 0, "")
+				pdf.CellFormat(35, cellHeight, createdDate, "1", 1, "C", false, 0, "")
 			}
 			pdf.Ln(5)
 		}
