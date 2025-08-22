@@ -22,6 +22,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/services"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/siteconnections"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 
 	"openstack-reporter/internal/models"
@@ -775,11 +776,8 @@ func (c *Client) getNetworks(projectNames map[string]string) ([]models.Resource,
 			projectID = currentProject.ID
 		}
 
-		// Extract subnet IDs
-		var subnetIDs []string
-		for _, subnet := range network.Subnets {
-			subnetIDs = append(subnetIDs, subnet)
-		}
+		// Get detailed subnet information
+		subnets := c.getSubnetsForNetwork(network.ID)
 
 		resources = append(resources, models.Resource{
 			ID:          network.ID,
@@ -798,7 +796,7 @@ func (c *Client) getNetworks(projectNames map[string]string) ([]models.Resource,
 				Shared:       network.Shared,
 				External:     false, // Default value, not available in basic Network struct
 				NetworkType:  "local", // Default value, not available in basic Network struct
-				Subnets:      subnetIDs,
+				Subnets:      subnets,
 				CreatedAt:    created,
 				UpdatedAt:    updated,
 			},
@@ -863,6 +861,37 @@ func (c *Client) getLoadBalancers(projectNames map[string]string) ([]models.Reso
 	}
 
 	return resources, nil
+}
+
+func (c *Client) getSubnetsForNetwork(networkID string) []models.Subnet {
+	// List subnets for the specific network
+	listOpts := subnets.ListOpts{
+		NetworkID: networkID,
+	}
+
+	allPages, err := subnets.List(c.networkClient, listOpts).AllPages()
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to get subnets for network %s: %v\n", networkID, err)
+		return []models.Subnet{}
+	}
+
+	subnetList, err := subnets.ExtractSubnets(allPages)
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to extract subnets for network %s: %v\n", networkID, err)
+		return []models.Subnet{}
+	}
+
+	var result []models.Subnet
+	for _, subnet := range subnetList {
+		result = append(result, models.Subnet{
+			ID:        subnet.ID,
+			Name:      subnet.Name,
+			CIDR:      subnet.CIDR,
+			GatewayIP: subnet.GatewayIP,
+		})
+	}
+
+	return result
 }
 
 func (c *Client) getVPNServices(projectNames map[string]string) ([]models.Resource, error) {

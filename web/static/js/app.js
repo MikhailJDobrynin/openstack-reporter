@@ -838,12 +838,20 @@ class OpenStackReporter {
 				return ips.length > 0 ? ips.join(', ') : 'Нет IP';
 
 			case 'network':
-				// Показываем тип сети и количество подсетей
-				let network_type = props.network_type || '❓';
+				// Показываем подсети и статус shared/external
 				let subnet_count = props.subnets ? props.subnets.length : 0;
 				let external = props.external ? '🌐' : '🏠';
 				let shared = props.shared ? '🔗' : '🔒';
-				return `Type: ${network_type}, Subnets: ${subnet_count}, ${external}${shared}`;
+
+				if (subnet_count > 0) {
+					// Показываем первые 2 подсети с CIDR
+					let subnet_info = props.subnets.slice(0, 2).map(subnet => subnet.cidr).join(', ');
+					if (subnet_count > 2) {
+						subnet_info += ` (+${subnet_count - 2})`;
+					}
+					return `Subnets: ${subnet_info}, ${external}${shared}`;
+				}
+				return `No subnets, ${external}${shared}`;
 
 			case 'vpn_service':
 				// Показываем Peer Address

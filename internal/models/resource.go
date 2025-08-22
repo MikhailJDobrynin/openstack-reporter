@@ -124,6 +124,14 @@ type Router struct {
 	UpdatedAt           time.Time              `json:"updated_at"`
 }
 
+// Subnet represents OpenStack subnet
+type Subnet struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CIDR      string `json:"cidr"`
+	GatewayIP string `json:"gateway_ip,omitempty"`
+}
+
 // Network represents OpenStack network
 type Network struct {
 	ID           string    `json:"id"`
@@ -133,7 +141,7 @@ type Network struct {
 	Shared       bool      `json:"shared"`
 	External     bool      `json:"external"`
 	NetworkType  string    `json:"network_type"`
-	Subnets      []string  `json:"subnets"`
+	Subnets      []Subnet  `json:"subnets"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
