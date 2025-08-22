@@ -1,0 +1,16 @@
+apiVersion: v2
+name: openstack-reporter
+description: A Helm chart for OpenStack Resource Reporter
+type: application
+version: 0.1.0
+appVersion: "1.0.29"
+keywords:
+  - openstack
+  - monitoring
+  - reporting
+home: https://github.com/vasyakrg/openstack-reporter
+sources:
+  - https://github.com/vasyakrg/openstack-reporter
+maintainers:
+  - name: vasyakrg
+    email: vasyakrg@example.com

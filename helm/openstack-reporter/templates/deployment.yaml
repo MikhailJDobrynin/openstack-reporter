@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openstack-reporter.fullname" . }}
+  labels:
+    {{- include "openstack-reporter.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "openstack-reporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "openstack-reporter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "openstack-reporter.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          env:
+            - name: OS_AUTH_URL
+              value: {{ .Values.openstack.auth.authUrl | quote }}
+            - name: OS_USERNAME
+              value: {{ .Values.openstack.auth.username | quote }}
+            - name: OS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openstack-reporter.fullname" . }}-openstack-secret
+                  key: password
+            - name: OS_PROJECT_NAME
+              value: {{ .Values.openstack.auth.projectName | quote }}
+            - name: OS_PROJECT_ID
+              value: {{ .Values.openstack.auth.projectId | quote }}
+            - name: OS_DOMAIN_NAME
+              value: {{ .Values.openstack.auth.domainName | quote }}
+            - name: OS_REGION_NAME
+              value: {{ .Values.openstack.auth.regionName | quote }}
+            {{- if .Values.openstack.endpoints.compute }}
+            - name: OS_COMPUTE_ENDPOINT
+              value: {{ .Values.openstack.endpoints.compute | quote }}
+            {{- end }}
+            {{- if .Values.openstack.endpoints.network }}
+            - name: OS_NETWORK_ENDPOINT
+              value: {{ .Values.openstack.endpoints.network | quote }}
+            {{- end }}
+            {{- if .Values.openstack.endpoints.blockStorage }}
+            - name: OS_BLOCKSTORAGE_ENDPOINT
+              value: {{ .Values.openstack.endpoints.blockStorage | quote }}
+            {{- end }}
+            {{- if .Values.openstack.endpoints.identity }}
+            - name: OS_IDENTITY_ENDPOINT
+              value: {{ .Values.openstack.endpoints.identity | quote }}
+            {{- end }}
+            {{- if .Values.openstack.endpoints.loadBalancer }}
+            - name: OS_LOADBALANCER_ENDPOINT
+              value: {{ .Values.openstack.endpoints.loadBalancer | quote }}
+            {{- end }}
+            {{- if .Values.openstack.endpoints.containerInfra }}
+            - name: OS_CONTAINERINFRA_ENDPOINT
+              value: {{ .Values.openstack.endpoints.containerInfra | quote }}
+            {{- end }}
+            - name: COLLECTION_INTERVAL
+              value: {{ .Values.config.collectionInterval | quote }}
+            - name: MAX_BACKUPS
+              value: {{ .Values.config.maxBackups | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "openstack-reporter.fullname" . }}-pvc
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
