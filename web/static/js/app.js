@@ -385,10 +385,24 @@ class OpenStackReporter {
 		const tbody = document.getElementById('resourcesTableBody');
 		const groupBy = document.getElementById('groupBy').value;
 
+		// Update table header based on current filter
+		this.updateTableHeader();
+
 		if (groupBy === 'project' || groupBy === 'type' || groupBy === 'status') {
 			this.renderGroupedTable(tbody, groupBy);
 		} else {
 			this.renderFlatTable(tbody);
+		}
+	}
+
+	updateTableHeader() {
+		const filterType = document.getElementById('filterType').value;
+		const typeHeader = document.querySelector('#resourcesTable thead th:nth-child(2)');
+		
+		if (filterType === 'network') {
+			typeHeader.textContent = 'Подсети';
+		} else {
+			typeHeader.textContent = 'Тип';
 		}
 	}
 
@@ -477,7 +491,7 @@ class OpenStackReporter {
             </td>
             <td>
                 <span class="resource-type-badge ${typeClass}">
-                    ${this.getTypeDisplayName(resource.type)}
+                    ${this.getTypeColumnValue(resource)}
                 </span>
             </td>
             <td>${resource.project_name || 'Неизвестно'}</td>
@@ -781,6 +795,27 @@ class OpenStackReporter {
 			'cluster': 'Kubernetes кластер'
 		};
 		return types[type] || type;
+	}
+
+	getTypeColumnValue(resource) {
+		if (resource.type === 'network') {
+			// Для сетей показываем подсети
+			const props = resource.properties;
+			if (props.subnets && props.subnets.length > 0) {
+				// Показываем первые 2 подсети с CIDR
+				let subnetInfo = '';
+				for (let i = 0; i < Math.min(2, props.subnets.length); i++) {
+					if (i > 0) subnetInfo += ', ';
+					subnetInfo += props.subnets[i].cidr;
+				}
+				if (props.subnets.length > 2) {
+					subnetInfo += ` (+${props.subnets.length - 2})`;
+				}
+				return subnetInfo;
+			}
+			return 'No subnets';
+		}
+		return this.getTypeDisplayName(resource.type);
 	}
 
 	getGroupIcon(groupBy) {

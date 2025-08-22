@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "openstack-reporter.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 1
   selector:
     matchLabels:
       {{- include "openstack-reporter.selectorLabels" . | nindent 6 }}

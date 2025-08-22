@@ -1,6 +1,3 @@
-# Default values for openstack-reporter
-replicaCount: 1
-
 image:
   repository: ghcr.io/vasyakrg/openstack-reporter
   pullPolicy: IfNotPresent

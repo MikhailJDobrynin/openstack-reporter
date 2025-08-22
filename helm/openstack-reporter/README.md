@@ -45,7 +45,6 @@ helm install openstack-reporter ./helm/openstack-reporter -f my-values.yaml
 
 | Параметр              | Описание                      | По умолчанию                          |
 |-----------------------|-------------------------------|---------------------------------------|
-| `replicaCount`        | Количество реплик (всегда 1)  | `1`                                   |
 | `image.repository`    | Docker image репозиторий      | `ghcr.io/vasyakrg/openstack-reporter` |
 | `image.tag`           | Docker image тег              | `latest`                              |
 | `service.type`        | Тип Kubernetes сервиса        | `ClusterIP`                           |
