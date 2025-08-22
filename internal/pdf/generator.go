@@ -216,8 +216,7 @@ func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []
 			// Table header
 			pdf.SetFont("Arial", "B", 9)
 			pdf.SetFillColor(200, 200, 200)
-			pdf.CellFormat(60, 7, "Name", "1", 0, "L", true, 0, "")
-			pdf.CellFormat(40, 7, g.getTypeColumnHeader(resourceType), "1", 0, "L", true, 0, "")
+			pdf.CellFormat(80, 7, "Name", "1", 0, "L", true, 0, "")
 			pdf.CellFormat(30, 7, "Status", "1", 0, "C", true, 0, "")
 			pdf.CellFormat(35, 7, "Created", "1", 1, "C", true, 0, "")
 
@@ -233,8 +232,30 @@ func (g *Generator) addDetailedResourcesByProject(pdf *gofpdf.Fpdf, resources []
 
 				createdDate := resource.CreatedAt.Format("2006-01-02")
 
-				pdf.CellFormat(60, 6, g.truncateString(name, 30), "1", 0, "L", false, 0, "")
-				pdf.CellFormat(40, 6, g.truncateString(g.getTypeColumnValue(resource, resourceType), 18), "1", 0, "L", false, 0, "")
+				// Add subnet info to name for networks
+				displayName := name
+				if resourceType == "network" {
+					if network, ok := resource.Properties.(models.Network); ok {
+						if len(network.Subnets) > 0 {
+							subnetInfo := ""
+							for i, subnet := range network.Subnets {
+								if i >= 2 {
+									subnetInfo += fmt.Sprintf(" (+%d)", len(network.Subnets)-2)
+									break
+								}
+								if i > 0 {
+									subnetInfo += ", "
+								}
+								subnetInfo += subnet.CIDR
+							}
+							displayName = fmt.Sprintf("%s\nSubnets: %s", name, subnetInfo)
+						} else {
+							displayName = fmt.Sprintf("%s\nNo subnets", name)
+						}
+					}
+				}
+
+				pdf.CellFormat(80, 6, g.truncateString(displayName, 40), "1", 0, "L", false, 0, "")
 				pdf.CellFormat(30, 6, g.truncateString(resource.Status, 12), "1", 0, "C", false, 0, "")
 				pdf.CellFormat(35, 6, createdDate, "1", 1, "C", false, 0, "")
 			}
@@ -262,42 +283,7 @@ func (g *Generator) getTypeDisplayName(resourceType string) string {
 	return resourceType
 }
 
-func (g *Generator) getTypeColumnHeader(resourceType string) string {
-	switch resourceType {
-	case "network":
-		return "Subnets"
-	default:
-		return "Type"
-	}
-}
 
-func (g *Generator) getTypeColumnValue(resource models.Resource, resourceType string) string {
-	switch resourceType {
-	case "network":
-		// Для сетей показываем подсети
-		if network, ok := resource.Properties.(models.Network); ok {
-			if len(network.Subnets) > 0 {
-				// Показываем первые 2 подсети с CIDR
-				subnetInfo := ""
-				for i, subnet := range network.Subnets {
-					if i >= 2 {
-						subnetInfo += fmt.Sprintf(" (+%d)", len(network.Subnets)-2)
-						break
-					}
-					if i > 0 {
-						subnetInfo += ", "
-					}
-					subnetInfo += subnet.CIDR
-				}
-				return subnetInfo
-			}
-			return "No subnets"
-		}
-		return "Network"
-	default:
-		return g.getTypeDisplayName(resource.Type)
-	}
-}
 
 func (g *Generator) truncateString(str string, maxLen int) string {
 	if len(str) <= maxLen {

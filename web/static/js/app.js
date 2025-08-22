@@ -398,7 +398,7 @@ class OpenStackReporter {
 	updateTableHeader() {
 		const filterType = document.getElementById('filterType').value;
 		const typeHeader = document.querySelector('#resourcesTable thead th:nth-child(2)');
-		
+
 		if (filterType === 'network') {
 			typeHeader.textContent = 'Подсети';
 		} else {
