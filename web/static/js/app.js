@@ -135,7 +135,8 @@ class OpenStackReporter {
 				break;
 
 			case 'resource_complete':
-				this.updateProjectResource(data.project, data.resource_type, 'success', `${data.count} найдено`);
+				const count = data.count || 0;
+				this.updateProjectResource(data.project, data.resource_type, 'success', `${count} найдено`);
 				break;
 
 			case 'resource_error':

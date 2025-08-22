@@ -1500,8 +1500,9 @@ func getResourcesForProjectWithProgress(project models.Project, reporter Progres
 		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect networks: %v", err), 0, 0, project.Name, "networks", 0, nil)
 	}
 
+	// Always send load balancer progress (even if client is nil)
+	reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, project.Name, "load_balancers", 0, nil)
 	if projectClient.loadbalancerClient != nil {
-		reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, project.Name, "load_balancers", 0, nil)
 		lbResources, err := projectClient.getLoadBalancers(projectNames)
 		if err == nil {
 			resources = append(resources, lbResources...)
@@ -1509,6 +1510,8 @@ func getResourcesForProjectWithProgress(project models.Project, reporter Progres
 		} else {
 			reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect load balancers: %v", err), 0, 0, project.Name, "load_balancers", 0, nil)
 		}
+	} else {
+		reporter.SendProgress("resource_complete", "Load balancers collected", 0, 0, project.Name, "load_balancers", 0, nil)
 	}
 
 	reporter.SendProgress("resource_start", "Collecting VPN connections", 0, 0, project.Name, "vpn_connections", 0, nil)
@@ -1520,8 +1523,9 @@ func getResourcesForProjectWithProgress(project models.Project, reporter Progres
 		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect VPN connections: %v", err), 0, 0, project.Name, "vpn_connections", 0, nil)
 	}
 
+	// Always send K8s clusters progress (even if client is nil)
+	reporter.SendProgress("resource_start", "Collecting K8s clusters", 0, 0, project.Name, "k8s_clusters", 0, nil)
 	if projectClient.containerClient != nil {
-		reporter.SendProgress("resource_start", "Collecting K8s clusters", 0, 0, project.Name, "k8s_clusters", 0, nil)
 		clusterResources, err := projectClient.getClusters(projectNames)
 		if err == nil {
 			resources = append(resources, clusterResources...)
@@ -1529,6 +1533,8 @@ func getResourcesForProjectWithProgress(project models.Project, reporter Progres
 		} else {
 			reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect K8s clusters: %v", err), 0, 0, project.Name, "k8s_clusters", 0, nil)
 		}
+	} else {
+		reporter.SendProgress("resource_complete", "K8s clusters collected", 0, 0, project.Name, "k8s_clusters", 0, nil)
 	}
 
 	return resources, nil
