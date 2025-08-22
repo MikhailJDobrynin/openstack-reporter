@@ -23,7 +23,7 @@
 
 2. Configure OpenStack credentials:
    - Set the OpenStack authentication URL: OS_AUTH_URL
-   - Set the OpenStack username: OS_USERNAME  
+   - Set the OpenStack username: OS_USERNAME
    - Set the OpenStack password in the secret
    - Set the OpenStack project name: OS_PROJECT_NAME
    - Set the OpenStack region name: OS_REGION_NAME

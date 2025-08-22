@@ -6,6 +6,8 @@
 
 OpenStack Reporter - это веб-приложение для мониторинга и отчетности по ресурсам OpenStack. Приложение собирает информацию о виртуальных машинах, дисках, сетях, балансировщиках нагрузки и других ресурсах OpenStack.
 
+**Примечание:** Приложение предназначено для запуска в одной реплике, так как использует локальное хранилище данных.
+
 ## Требования
 
 - Kubernetes 1.19+
@@ -41,14 +43,14 @@ helm install openstack-reporter ./helm/openstack-reporter -f my-values.yaml
 
 ### Основные параметры
 
-| Параметр | Описание | По умолчанию |
-|----------|----------|--------------|
-| `replicaCount` | Количество реплик | `1` |
-| `image.repository` | Docker image репозиторий | `ghcr.io/vasyakrg/openstack-reporter` |
-| `image.tag` | Docker image тег | `latest` |
-| `service.type` | Тип Kubernetes сервиса | `ClusterIP` |
-| `ingress.enabled` | Включить Ingress | `false` |
-| `persistence.enabled` | Включить постоянное хранилище | `true` |
+| Параметр              | Описание                      | По умолчанию                          |
+|-----------------------|-------------------------------|---------------------------------------|
+| `replicaCount`        | Количество реплик (всегда 1)  | `1`                                   |
+| `image.repository`    | Docker image репозиторий      | `ghcr.io/vasyakrg/openstack-reporter` |
+| `image.tag`           | Docker image тег              | `latest`                              |
+| `service.type`        | Тип Kubernetes сервиса        | `ClusterIP`                           |
+| `ingress.enabled`     | Включить Ingress              | `false`                               |
+| `persistence.enabled` | Включить постоянное хранилище | `true`                                |
 
 ### Конфигурация OpenStack
 

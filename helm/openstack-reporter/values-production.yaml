@@ -1,10 +1,10 @@
 # Production values for openstack-reporter
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: ghcr.io/vasyakrg/openstack-reporter
   pullPolicy: Always
-  tag: "v1.0.29"
+  tag: "v1.0.30"
 
 service:
   type: ClusterIP
@@ -35,13 +35,6 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
-
 persistence:
   enabled: true
   storageClass: "fast-ssd"
@@ -53,7 +46,7 @@ openstack:
   auth:
     authUrl: "https://your-openstack-auth-url:5000/v3"
     username: "your-username"
-    password: "your-password"  # This will be stored in a secret
+    password: "your-password" # This will be stored in a secret
     projectName: "your-project"
     projectId: "your-project-id"
     domainName: "your-domain"
