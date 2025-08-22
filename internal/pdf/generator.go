@@ -249,6 +249,7 @@ func (g *Generator) getTypeDisplayName(resourceType string) string {
 		"volume":         "Volume",
 		"floating_ip":    "Floating IP",
 		"router":         "Router",
+		"network":        "Network",
 		"load_balancer":  "Load Balancer",
 		"vpn_service":    "VPN Service",
 		"cluster":        "K8s Cluster",

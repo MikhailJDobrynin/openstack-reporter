@@ -273,6 +273,7 @@ class OpenStackReporter {
 			'volumes': 'Диски',
 			'floating_ips': 'Floating IP',
 			'routers': 'Роутеры',
+			'networks': 'Сети',
 			'load_balancers': 'Load Balancers',
 			'vpn_connections': 'VPN',
 			'k8s_clusters': 'K8s кластеры'

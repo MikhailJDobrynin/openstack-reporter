@@ -1491,6 +1491,15 @@ func getResourcesForProjectWithProgress(project models.Project, reporter Progres
 		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect routers: %v", err), 0, 0, project.Name, "routers", 0, nil)
 	}
 
+	reporter.SendProgress("resource_start", "Collecting networks", 0, 0, project.Name, "networks", 0, nil)
+	networkResources, err := projectClient.getNetworks(projectNames)
+	if err == nil {
+		resources = append(resources, networkResources...)
+		reporter.SendProgress("resource_complete", "Networks collected", 0, 0, project.Name, "networks", len(networkResources), nil)
+	} else {
+		reporter.SendProgress("resource_error", fmt.Sprintf("Failed to collect networks: %v", err), 0, 0, project.Name, "networks", 0, nil)
+	}
+
 	if projectClient.loadbalancerClient != nil {
 		reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, project.Name, "load_balancers", 0, nil)
 		lbResources, err := projectClient.getLoadBalancers(projectNames)
