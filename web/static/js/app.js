@@ -562,7 +562,7 @@ class OpenStackReporter {
 	changePage(page) {
 		const groupBy = document.getElementById('groupBy').value;
 		let totalItems = this.filteredData.length;
-		
+
 		// For grouped data, we need to count group headers as well
 		if (groupBy === 'project' || groupBy === 'type' || groupBy === 'status') {
 			const groups = {};
@@ -576,7 +576,7 @@ class OpenStackReporter {
 			// Add group headers to the count
 			totalItems += Object.keys(groups).length;
 		}
-		
+
 		const totalPages = Math.ceil(totalItems / this.itemsPerPage);
 
 		if (page < 1 || page > totalPages) return;
@@ -716,7 +716,8 @@ class OpenStackReporter {
 		document.getElementById('totalServers').textContent = summary.total_servers || 0;
 		document.getElementById('totalVolumes').textContent = summary.total_volumes || 0;
 
-		const networkTotal = (summary.total_floating_ips || 0) +
+		const networkTotal = (summary.total_networks || 0) +
+			(summary.total_floating_ips || 0) +
 			(summary.total_routers || 0) +
 			(summary.total_load_balancers || 0) +
 			(summary.total_vpn_services || 0);
