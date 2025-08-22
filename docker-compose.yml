@@ -1,11 +1,13 @@
 services:
   openstack-reporter:
+    # image: ghcr.io/vasyakrg/openstack-reporter:latest
     build:
       context: .
+      dockerfile: Dockerfile
       args:
-        VERSION: ${VERSION}
-        GIT_COMMIT: ${GIT_COMMIT}
-        BUILD_TIME: ${BUILD_TIME}
+        - VERSION=${VERSION}
+        - GIT_COMMIT=${GIT_COMMIT}
+        - BUILD_TIME=${BUILD_TIME}
     ports:
       - "8080:8080"
     environment:

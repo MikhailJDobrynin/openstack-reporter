@@ -75,3 +75,6 @@ tmp/
 
 # reports
 *.pdf
+
+# anothers
+ROADMAP.md

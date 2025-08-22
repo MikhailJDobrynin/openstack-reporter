@@ -121,6 +121,11 @@ body {
     color: #cc0000;
 }
 
+.type-network {
+    background-color: #e6f7ff;
+    color: #0066cc;
+}
+
 .btn {
     border-radius: 8px;
     font-weight: 500;

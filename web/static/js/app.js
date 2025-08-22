@@ -205,8 +205,8 @@ class OpenStackReporter {
 		if (existingProject) return; // Project already exists
 
 		const statusClass = status === 'success' ? 'list-group-item-success' :
-							status === 'danger' ? 'list-group-item-danger' :
-							status === 'progress' ? 'list-group-item-info' : '';
+			status === 'danger' ? 'list-group-item-danger' :
+				status === 'progress' ? 'list-group-item-info' : '';
 
 		const projectItem = document.createElement('div');
 		projectItem.className = `list-group-item ${statusClass}`;
@@ -235,8 +235,8 @@ class OpenStackReporter {
 			// Update status class
 			projectItem.className = 'list-group-item ' +
 				(status === 'success' ? 'list-group-item-success' :
-				 status === 'danger' ? 'list-group-item-danger' :
-				 'list-group-item-info');
+					status === 'danger' ? 'list-group-item-danger' :
+						'list-group-item-info');
 
 			// Update status badge
 			statusBadge.className = `badge ${status === 'success' ? 'bg-success' : status === 'danger' ? 'bg-danger' : 'bg-secondary'}`;
@@ -261,8 +261,8 @@ class OpenStackReporter {
 		}
 
 		const statusIcon = status === 'success' ? '✅' :
-						   status === 'danger' ? '❌' :
-						   status === 'progress' ? '🔄' : '⏳';
+			status === 'danger' ? '❌' :
+				status === 'progress' ? '🔄' : '⏳';
 
 		resourceItem.innerHTML = `${statusIcon} ${this.getResourceTypeLabel(resourceType)}: ${message}`;
 	}
@@ -441,7 +441,7 @@ class OpenStackReporter {
 		const row = document.createElement('tr');
 
 		const createdDate = new Date(resource.created_at).toLocaleDateString('ru-RU');
-		const statusClass = this.getStatusClass(resource.status);
+		const statusClass = this.getStatusClass(resource.status, resource.type);
 		const typeClass = this.getTypeClass(resource.type);
 
 		row.innerHTML = `
@@ -694,12 +694,13 @@ class OpenStackReporter {
 		document.getElementById('errorAlert').style.display = 'none';
 	}
 
-	getStatusClass(status) {
+	getStatusClass(status, type) {
 		const statusLower = status.toLowerCase();
-		if (statusLower.includes('active') || statusLower.includes('available')) return 'status-active';
 		if (statusLower.includes('error') || statusLower.includes('failed')) return 'status-error';
 		if (statusLower.includes('building') || statusLower.includes('pending')) return 'status-building';
 		if (statusLower.includes('shutoff') || statusLower.includes('down')) return 'status-shutoff';
+		if (statusLower.includes('available') && type === 'volume') return 'status-error';
+		if (statusLower.includes('active') || statusLower.includes('available')) return 'status-active';
 		return 'status-active';
 	}
 
@@ -713,6 +714,7 @@ class OpenStackReporter {
 			'volume': 'Диск',
 			'floating_ip': 'Floating IP',
 			'router': 'Роутер',
+			'network': 'Сеть',
 			'load_balancer': 'Балансировщик',
 			'vpn_service': 'VPN сервис',
 			'cluster': 'Kubernetes кластер'
@@ -776,6 +778,14 @@ class OpenStackReporter {
 					ips.push(props.floating_ip);
 				}
 				return ips.length > 0 ? ips.join(', ') : 'Нет IP';
+
+			case 'network':
+				// Показываем тип сети и количество подсетей
+				let network_type = props.network_type || '❓';
+				let subnet_count = props.subnets ? props.subnets.length : 0;
+				let external = props.external ? '🌐' : '🏠';
+				let shared = props.shared ? '🔗' : '🔒';
+				return `Type: ${network_type}, Subnets: ${subnet_count}, ${external}${shared}`;
 
 			case 'vpn_service':
 				// Показываем Peer Address

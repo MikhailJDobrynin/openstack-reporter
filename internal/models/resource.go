@@ -124,6 +124,20 @@ type Router struct {
 	UpdatedAt           time.Time              `json:"updated_at"`
 }
 
+// Network represents OpenStack network
+type Network struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Status       string    `json:"status"`
+	AdminStateUp bool      `json:"admin_state_up"`
+	Shared       bool      `json:"shared"`
+	External     bool      `json:"external"`
+	NetworkType  string    `json:"network_type"`
+	Subnets      []string  `json:"subnets"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 // ResourceReport represents the complete report structure
 type ResourceReport struct {
 	GeneratedAt time.Time  `json:"generated_at"`
@@ -142,4 +156,5 @@ type Summary struct {
 	TotalVPNServices   int `json:"total_vpn_services"`
 	TotalClusters      int `json:"total_clusters"`
 	TotalRouters       int `json:"total_routers"`
+	TotalNetworks      int `json:"total_networks"`
 }

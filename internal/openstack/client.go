@@ -21,6 +21,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/services"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/siteconnections"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 
 	"openstack-reporter/internal/models"
@@ -748,6 +749,65 @@ func (c *Client) getRouters(projectNames map[string]string) ([]models.Resource, 
 	return resources, nil
 }
 
+func (c *Client) getNetworks(projectNames map[string]string) ([]models.Resource, error) {
+	// Get current project info for fallback
+	currentProject, _ := c.getCurrentProject()
+	allPages, err := networks.List(c.networkClient, networks.ListOpts{}).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	networkList, err := networks.ExtractNetworks(allPages)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []models.Resource
+	for _, network := range networkList {
+		created := network.CreatedAt
+		updated := network.UpdatedAt
+
+		// Get project name, fallback to current project if not found
+		projectName := projectNames[network.TenantID]
+		projectID := network.TenantID
+		if projectName == "" {
+			projectName = currentProject.Name
+			projectID = currentProject.ID
+		}
+
+		// Extract subnet IDs
+		var subnetIDs []string
+		for _, subnet := range network.Subnets {
+			subnetIDs = append(subnetIDs, subnet)
+		}
+
+		resources = append(resources, models.Resource{
+			ID:          network.ID,
+			Name:        network.Name,
+			Type:        "network",
+			ProjectID:   projectID,
+			ProjectName: projectName,
+			Status:      network.Status,
+			CreatedAt:   created,
+			UpdatedAt:   updated,
+			Properties: models.Network{
+				ID:           network.ID,
+				Name:         network.Name,
+				Status:       network.Status,
+				AdminStateUp: network.AdminStateUp,
+				Shared:       network.Shared,
+				External:     false, // Default value, not available in basic Network struct
+				NetworkType:  "local", // Default value, not available in basic Network struct
+				Subnets:      subnetIDs,
+				CreatedAt:    created,
+				UpdatedAt:    updated,
+			},
+		})
+	}
+
+	return resources, nil
+}
+
 func (c *Client) getLoadBalancers(projectNames map[string]string) ([]models.Resource, error) {
 	if c.loadbalancerClient == nil {
 		return []models.Resource{}, nil
@@ -949,6 +1009,8 @@ func (c *Client) calculateSummary(resources []models.Resource, totalProjects int
 			summary.TotalClusters++
 		case "router":
 			summary.TotalRouters++
+		case "network":
+			summary.TotalNetworks++
 		}
 	}
 
@@ -1308,6 +1370,15 @@ func getResourcesForProject(project models.Project) ([]models.Resource, error) {
 		fmt.Printf(" failed: %v\n", err)
 	}
 
+	fmt.Printf("   🌐 Collecting networks...")
+	networkResources, err := projectClient.getNetworks(projectNames)
+	if err == nil {
+		resources = append(resources, networkResources...)
+		fmt.Printf(" %d found\n", len(networkResources))
+	} else {
+		fmt.Printf(" failed: %v\n", err)
+	}
+
 	if projectClient.loadbalancerClient != nil {
 		fmt.Printf("   ⚖️  Collecting load balancers...")
 		lbResources, err := projectClient.getLoadBalancers(projectNames)
@@ -1460,6 +1531,14 @@ func (c *Client) collectResourcesForProjectsWithProgress(report *models.Resource
 	report.Resources = append(report.Resources, routerResources...)
 	reporter.SendProgress("resource_complete", "Routers collected", 0, 0, "", "routers", len(routerResources), nil)
 
+	reporter.SendProgress("resource_start", "Collecting networks", 0, 0, "", "networks", 0, nil)
+	networkResources, err := c.getNetworks(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get networks: %w", err)
+	}
+	report.Resources = append(report.Resources, networkResources...)
+	reporter.SendProgress("resource_complete", "Networks collected", 0, 0, "", "networks", len(networkResources), nil)
+
 	// Optional services
 	if c.loadbalancerClient != nil {
 		reporter.SendProgress("resource_start", "Collecting load balancers", 0, 0, "", "load_balancers", 0, nil)
@@ -1602,6 +1681,12 @@ func (c *Client) collectResourcesForProjects(report *models.ResourceReport, proj
 		return nil, fmt.Errorf("failed to get routers: %w", err)
 	}
 	report.Resources = append(report.Resources, routerResources...)
+
+	networkResources, err := c.getNetworks(projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get networks: %w", err)
+	}
+	report.Resources = append(report.Resources, networkResources...)
 
 	// Optional services
 	if c.loadbalancerClient != nil {
