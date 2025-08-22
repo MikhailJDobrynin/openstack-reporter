@@ -5,7 +5,7 @@ class OpenStackReporter {
 		this.data = null;
 		this.filteredData = [];
 		this.currentPage = 1;
-		this.itemsPerPage = 20;
+		this.itemsPerPage = 50;
 		this.init();
 	}
 
