@@ -1,280 +1,176 @@
-# OpenStack Resources Reporter
+# OpenStack Reporter Helm Chart
 
-Веб-приложение для создания отчетов по ресурсам в облаке OpenStack с возможностью группировки, сортировки и экспорта в PDF.
+This Helm chart is designed for deploying **OpenStack Resource Reporter** in Kubernetes.
 
-## Возможности
+## Description
 
-- 📊 **Сбор данных**: Автоматический сбор информации о ресурсах через OpenStack API
-- 🗂️ **Группировка**: По проектам, типу ресурсов или статусу
-- 🔄 **Сортировка**: По имени, дате создания, статусу или типу (с обратной сортировкой)
-- 📄 **PDF экспорт**: Генерация профессиональных PDF отчетов с детализацией по проектам
-- 💾 **Кэширование**: Сохранение данных в JSON файлы для быстрого доступа
-- 🎨 **Современный UI**: Адаптивный интерфейс с Bootstrap и информативными подписями ресурсов
-- 📖 **API документация**: Встроенная документация всех API эндпоинтов
-- 🔍 **Информативные подписи**: Отображение полезной информации вместо UUID (Flavor, IP, размеры дисков)
+**OpenStack Reporter** is a web application for monitoring and reporting on OpenStack resources.  
+The application collects information about virtual machines, volumes, networks, load balancers, and other OpenStack resources.
 
-## Поддерживаемые ресурсы
+**Note:** The application is intended to run as a single replica since it uses local data storage.
 
-- ✅ Проекты (Projects)
-- ✅ Виртуальные машины (Servers) - с информацией о Flavor и сетях
-- ✅ Диски (Volumes) - с данными о подключении, типе и размере
-- ✅ Балансировщики нагрузки (Load Balancers) - с IP адресами
-- ✅ Плавающие IP (Floating IPs) - с информацией о подключенных ресурсах
-- ✅ VPN соединения (IPSec Site Connections) - с Peer Address
-- ✅ Роутеры (Routers)
-- ❌ Kubernetes кластеры (в планах)
+## Requirements
 
-## Установка
+- Kubernetes 1.19+
+- Helm 3.0+
+- Access to the OpenStack API
+- PersistentVolume for data storage (optional)
 
-### Требования
+## Installation
 
-- Go 1.21+
-- Доступ к OpenStack API
-
-### Быстрый старт
-
-#### Вариант 1: Docker (рекомендуется)
+### Basic Installation
 
 ```bash
-docker run -d \
-  --name openstack-reporter \
-  -p 8080:8080 \
-  -e OS_USERNAME=your_username \
-  -e OS_PASSWORD=your_password \
-  -e OS_AUTH_URL=https://your-openstack.example.com:5000/v3 \
-  -e OS_PROJECT_DOMAIN_NAME=your_domain \
-  -e OS_USER_DOMAIN_NAME=your_domain \
-  -e OS_IDENTITY_API_VERSION=3 \
-  -e OS_AUTH_TYPE=password \
-  -e OS_INSECURE=true \
-  ghcr.io/[username]/openstack-reporter:latest
+# Add the repository (if available)
+helm repo add openstack-reporter https://your-repo-url
+
+# Install the chart
+helm install openstack-reporter ./helm/openstack-reporter
 ```
 
-#### Вариант 2: Docker Compose
+### Installation with Custom Values
 
 ```bash
-curl -O https://raw.githubusercontent.com/[username]/openstack-reporter/main/docker-compose.yml
-# Отредактировать переменные окружения в docker-compose.yml
-docker-compose up -d
+# Create a values file
+cp helm/openstack-reporter/values-production.yaml my-values.yaml
+
+# Edit my-values.yaml with your OpenStack settings
+
+# Install with custom values
+helm install openstack-reporter ./helm/openstack-reporter -f my-values.yaml
 ```
 
-#### Вариант 3: Сборка из исходников
+## Configuration
 
-1. **Клонировать репозиторий**
+### Main Parameters
+
+| Parameter              | Description                      | Default Value                         |
+|------------------------|----------------------------------|---------------------------------------|
+| `image.repository`     | Docker image repository           | `ghcr.io/vasyakrg/openstack-reporter` |
+| `image.tag`            | Docker image tag                  | `latest`                              |
+| `service.type`         | Kubernetes service type           | `ClusterIP`                           |
+| `ingress.enabled`      | Enable Ingress                    | `false`                               |
+| `persistence.enabled`  | Enable persistent storage         | `true`                                |
+
+### OpenStack Configuration
+
+```yaml
+openstack:
+  auth:
+    authUrl: "https://your-openstack-auth-url:5000/v3"
+    username: "your-username"
+    password: "your-password"
+    projectName: "your-project"
+    projectId: "your-project-id"
+    domainName: "your-domain"
+    regionName: "your-region"
+```
+
+### Application Configuration
+
+```yaml
+config:
+  collectionInterval: 30  # Data collection interval in minutes
+  maxBackups: 7           # Maximum number of backups
+  logLevel: "info"        # Logging level
+```
+
+## Usage
+
+### Accessing the Application
+
+After installation, the application will be accessible at the address specified in `NOTES.txt`:
+
 ```bash
-git clone <repository-url>
-cd openstack-reporter
+# Get the URL
+helm status openstack-reporter
+
+# Port-forward (if using ClusterIP)
+kubectl port-forward svc/openstack-reporter 8080:8080
 ```
 
-2. **Настроить переменные окружения**
-```bash
-cp .env.example .env
-# Отредактировать .env файл с вашими данными OpenStack
-```
-
-3. **Установить зависимости**
-```bash
-go mod download
-```
-
-4. **Запустить приложение**
-```bash
-go run main.go
-```
-
-5. **Открыть в браузере**
-```
-http://localhost:8080
-```
-
-## Конфигурация
-
-### Переменные окружения
-
-Создайте файл `.env` на основе `.env.example`:
+### Checking Status
 
 ```bash
-# OpenStack Authentication
-OS_PROJECT_DOMAIN_NAME=vhc-pc
-OS_USER_DOMAIN_NAME=vhc-pc
-OS_USERNAME=your_username
-OS_PASSWORD=your_password
-OS_AUTH_URL=https://eu3-cloud.domain.cpm:5000/v3
-OS_IDENTITY_API_VERSION=3
-OS_AUTH_TYPE=password
-OS_INSECURE=true
+# Check pod status
+kubectl get pods -l app.kubernetes.io/name=openstack-reporter
 
-# Application Configuration
-PORT=8080
+# View logs
+kubectl logs -l app.kubernetes.io/name=openstack-reporter
+
+# Check the service
+kubectl get svc openstack-reporter
 ```
 
-### Параметры OpenStack
+### Upgrading
 
-- `OS_AUTH_URL` - URL эндпоинта аутентификации OpenStack
-- `OS_USERNAME` - Имя пользователя
-- `OS_PASSWORD` - Пароль
-- `OS_PROJECT_DOMAIN_NAME` - Домен проекта
-- `OS_USER_DOMAIN_NAME` - Домен пользователя
-- `OS_INSECURE` - Отключить проверку SSL сертификатов (true/false)
-
-## Использование
-
-### Веб-интерфейс
-
-1. **Главная страница** - Обзор всех ресурсов с картами сводки
-2. **Группировка** - Выберите группировку по проектам, типу или статусу
-3. **Сортировка** - Сортировка по различным полям (с возможностью обратной сортировки)
-4. **Фильтрация** - Фильтр по типу ресурса
-5. **Информативные подписи** - показывают полезные данные:
-   - ВМ: Flavor и IP адреса (например, "Flavor: va-2-4, IPs: 172.21.x.x")
-   - Диски: Тип, загрузочность, подключение, размер
-   - Floating IP: К какому ресурсу подключен
-   - Load Balancer: Внутренние и внешние IP адреса
-   - VPN: Peer Address
-6. **Обновление данных** - Кнопка "Обновить данные" для получения свежей информации
-7. **PDF экспорт** - Кнопка "Экспорт PDF" для скачивания отчета
-8. **API документация** - Доступ к встроенной документации API
-
-### API эндпоинты
-
-- `GET /api/resources` - Получить список ресурсов
-- `POST /api/refresh` - Обновить данные из OpenStack
-- `GET /api/export/pdf` - Скачать PDF отчет
-- `GET /api/status` - Статус кэшированных данных
-- `GET /api/version` - Информация о версии приложения
-- `GET /api/docs` - API документация в JSON формате
-
-### Веб-страницы
-
-- `GET /` - Главная страница с отчетом
-- `GET /docs` - Страница с API документацией
-
-## Архитектура
-
-```
-openstack-reporter/
-├── main.go                 # Точка входа
-├── internal/
-│   ├── models/            # Модели данных
-│   ├── openstack/         # OpenStack API клиент
-│   ├── storage/           # JSON хранилище
-│   ├── handlers/          # HTTP обработчики
-│   ├── pdf/               # PDF генератор
-│   └── version/           # Управление версиями
-├── web/
-│   ├── templates/         # HTML шаблоны
-│   └── static/           # CSS/JS/изображения
-└── data/                 # Кэшированные данные (создается автоматически)
-```
-
-## Разработка
-
-### Структура проекта
-
-- **internal/models** - Структуры данных для всех типов ресурсов
-- **internal/openstack** - Клиент для работы с OpenStack API
-- **internal/storage** - Компонент для сохранения/загрузки JSON данных
-- **internal/handlers** - HTTP обработчики для API
-- **internal/pdf** - Генератор PDF отчетов
-- **web/** - Веб-интерфейс (HTML, CSS, JavaScript)
-
-### CI/CD
-
-Проект использует GitHub Actions для автоматизации:
-
-- **Тестирование и сборка** - при каждом push и PR
-- **Docker образы** - автоматическая публикация в GitHub Container Registry
-- **Мультиплатформенная сборка** - поддержка `linux/amd64` и `linux/arm64`
-- **Сканирование безопасности** - проверка образов на уязвимости
-- **Релизы** - автоматическое создание GitHub релизов с бинарными файлами
-
-### Docker образы
-
-Доступны в GitHub Container Registry:
-- `ghcr.io/[username]/openstack-reporter:latest` - последняя версия
-- `ghcr.io/[username]/openstack-reporter:v1.0.0` - тегированные релизы
-
-### Бинарные файлы
-
-При каждом релизе автоматически создаются предкомпилированные бинарные файлы для:
-- **Linux**: `amd64`, `arm64`
-- **macOS**: `amd64`, `arm64`
-
-Скачайте с [страницы релизов GitHub](https://github.com/[username]/openstack-reporter/releases)
-
-### Добавление новых типов ресурсов
-
-1. Добавить модель в `internal/models/resource.go`
-2. Реализовать сбор данных в `internal/openstack/client.go`
-3. Обновить PDF генератор в `internal/pdf/generator.go`
-4. Добавить отображение в веб-интерфейс
-
-## Безопасность
-
-- Используйте HTTPS в продакшене
-- Храните учетные данные OpenStack в переменных окружения
-- Ограничьте доступ к приложению через файрвол или прокси
-- Регулярно обновляйте зависимости
-
-## Устранение неполадок
-
-### Проблемы с подключением к OpenStack
-
-1. Проверьте правильность URL и учетных данных
-2. Убедитесь, что `OS_INSECURE=true` для самоподписанных сертификатов
-3. Проверьте сетевую доступность к OpenStack API
-
-### Проблемы с правами доступа
-
-- Убедитесь, что пользователь имеет права на чтение ресурсов
-- Приложение работает с текущим проектом пользователя (не требует админских прав)
-- Для получения данных всех проектов нужны админские права, но это не обязательно
-
-### Проблемы с экспортом PDF
-
-Если экспорт PDF не работает (ошибка 404):
-
-1. **Проверьте, что данные загружены:**
-   ```bash
-   curl http://localhost:8080/api/status
-   ```
-
-2. **Проверьте логи Docker контейнера:**
-   ```bash
-   docker logs <container_name>
-   ```
-
-3. **Проверьте права доступа к директории data:**
-   ```bash
-   docker exec <container_name> ls -la /app/data
-   ```
-
-4. **Тестирование с детальными логами:**
-   ```bash
-   # В логах должно быть:
-   # Routes registered:
-   #   GET  /api/export/pdf
-   # PDF export requested from <IP>
-   # PDF export: loaded report with N resources
-   # PDF export: successfully generated PDF (X bytes)
-   ```
-
-### Логи
-
-Приложение выводит логи в stdout. Для отладки проверьте:
 ```bash
-go run main.go 2>&1 | tee app.log
+# Upgrade the release
+helm upgrade openstack-reporter ./helm/openstack-reporter -f my-values.yaml
+
+# Upgrade image only
+helm upgrade openstack-reporter ./helm/openstack-reporter --set image.tag=v1.0.29
 ```
 
-В версии v1.0.10+ добавлено детальное логирование:
-- Регистрация маршрутов при запуске
-- Детальные HTTP запросы с IP и временными метками
-- Процесс экспорта PDF с диагностикой ошибок
+### Uninstalling
 
-## Лицензия
+```bash
+# Uninstall the release
+helm uninstall openstack-reporter
 
-MIT License
+# Uninstall and keep history
+helm uninstall openstack-reporter --keep-history
+```
 
-## Поддержка
+## Security
 
-Для вопросов и предложений создавайте Issues в репозитории.
+### Secret Management
+
+The OpenStack password is stored in a Kubernetes Secret:
+
+```bash
+# Create the secret manually (alternative)
+kubectl create secret generic openstack-secret   --from-literal=password=your-password
+```
+
+### RBAC
+
+The chart creates a ServiceAccount with minimal privileges.  
+For production use, it is recommended to adjust RBAC rules appropriately.
+
+## Monitoring
+
+### Health Checks
+
+The application provides a health check endpoint:
+- `/api/health` — application health status
+
+### Metrics
+
+The application can be integrated with Prometheus for metrics collection.
+
+## Troubleshooting
+
+### OpenStack Connection Issues
+
+1. Verify the authentication URL
+2. Make sure the credentials are correct
+3. Check the availability of the OpenStack API
+
+### Storage Issues
+
+1. Ensure the `StorageClass` exists
+2. Verify access rights to the PersistentVolume
+3. Check available disk space
+
+### Network Issues
+
+1. Review the Ingress configuration
+2. Make sure DNS is configured correctly
+3. Check firewall rules
+
+## Support
+
+For support, please create an issue in the project's GitHub repository.
+https://github.com/vasyakrg
+
